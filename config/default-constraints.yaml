@@ -1,0 +1,90 @@
+# Default Constraint Rules for MCP Constraint Monitor
+# These can be overridden by project-specific configuration
+
+constraints:
+  # Code Quality Constraints
+  - id: no-console-log
+    pattern: "console\\.log"
+    message: "Use Logger.log() instead of console.log for better log management"
+    severity: warning
+    enabled: true
+    suggestion: "Replace with: Logger.log('info', 'category', message)"
+    
+  - id: no-var-declarations
+    pattern: "\\bvar\\s+"
+    message: "Use 'let' or 'const' instead of 'var'"
+    severity: warning
+    enabled: true
+    suggestion: "Use 'let' for mutable variables, 'const' for immutable"
+    
+  - id: proper-error-handling
+    pattern: "catch\\s*\\([^)]*\\)\\s*\\{\\s*\\}"
+    message: "Empty catch blocks should be avoided"
+    severity: error
+    enabled: true
+    suggestion: "Add proper error handling or at minimum log the error"
+
+  # Security Constraints  
+  - id: no-hardcoded-secrets
+    pattern: "(api[_-]?key|password|secret|token)\\s*[=:]\\s*['\"][^'\"]{8,}['\"]"
+    message: "Potential hardcoded secret detected"
+    severity: critical
+    enabled: true
+    suggestion: "Use environment variables or secure key management"
+    
+  - id: no-eval-usage
+    pattern: "\\beval\\s*\\("
+    message: "eval() usage detected - security risk"
+    severity: critical
+    enabled: true
+    suggestion: "Avoid eval() - use safer alternatives for dynamic code execution"
+
+  # Best Practices
+  - id: proper-function-naming
+    pattern: "function\\s+[a-z]"
+    message: "Function names should start with a verb (camelCase)"
+    severity: info
+    enabled: true
+    suggestion: "Use descriptive verb-based names: getUserData(), processResults()"
+    
+  - id: no-magic-numbers
+    pattern: "\\b\\d{2,}\\b(?!\\s*(px|%|em|rem|vh|vw))"
+    message: "Magic numbers detected - consider using named constants"
+    severity: info
+    enabled: false
+    suggestion: "Define meaningful constants: const MAX_RETRIES = 3"
+
+  # Framework-specific (can be enabled per project)
+  - id: react-hooks-deps
+    pattern: "useEffect\\([^,]*,\\s*\\[\\]"
+    message: "useEffect with empty deps array - verify if this is intentional"
+    severity: info
+    enabled: false
+    suggestion: "Ensure useEffect dependencies are correct to avoid bugs"
+    
+  - id: react-state-complexity
+    pattern: "useState\\([^)]*\\{[^}]*\\}[^)]*\\)"
+    message: "Complex object in useState - consider useReducer or separate states"
+    severity: warning
+    enabled: false
+    suggestion: "Use useReducer for complex state or separate into multiple useState calls"
+
+# Global Settings
+settings:
+  # Compliance scoring
+  compliance:
+    excellent_threshold: 9.0
+    good_threshold: 7.0
+    warning_threshold: 5.0
+    
+  # Risk assessment
+  risk_levels:
+    critical_violations_for_high_risk: 1
+    error_violations_for_medium_risk: 3
+    warning_violations_for_low_risk: 10
+    
+  # Monitoring
+  monitoring:
+    cache_timeout: 5000
+    max_history: 1000
+    auto_cleanup: true
