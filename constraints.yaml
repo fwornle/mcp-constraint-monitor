@@ -69,6 +69,42 @@ constraints:
     enabled: false
     suggestion: "Use useReducer for complex state or separate into multiple useState calls"
 
+  # Documentation and Diagramming Standards
+  - id: plantuml-diagram-workflow
+    pattern: "(?i)(architecture|diagram|flow|sequence).*(?:diagram|chart)"
+    message: "Diagrams should follow PlantUML workflow: .puml files in docs/puml/, PNG files in docs/images/"
+    severity: info
+    enabled: true
+    suggestion: "1. Create .puml file in docs/puml/ with !include _standard-style.puml 2. Generate PNG with plantuml -tpng 3. Store PNG in docs/images/ 4. Reference PNG in markdown"
+    
+  - id: plantuml-file-location
+    pattern: "!include.*\\.puml"
+    message: "PlantUML files should be stored in docs/puml/ directory"
+    severity: warning
+    enabled: true
+    suggestion: "Move .puml files to docs/puml/ and update !include paths"
+    
+  - id: image-reference-pattern
+    pattern: "!\\[.*\\]\\((?!docs/images/).*\\.(png|jpg|jpeg|svg)\\)"
+    message: "Diagram images should be stored in docs/images/ and referenced with relative paths"
+    severity: warning
+    enabled: true
+    suggestion: "Move images to docs/images/ and update markdown references: ![Description](docs/images/filename.png)"
+
+  - id: plantuml-standard-styling
+    pattern: "@startuml.*\\n(?!.*!include _standard-style\\.puml)"
+    message: "PlantUML files must include the standard styling file"
+    severity: error
+    enabled: true
+    suggestion: "Add '!include _standard-style.puml' after @startuml and before content"
+    
+  - id: plantuml-readability-guidelines  
+    pattern: "(?i)(too wide|barely readable|restructure.*readability)"
+    message: "PlantUML diagrams should prioritize readability with vertical layouts and logical grouping"
+    severity: info
+    enabled: true
+    suggestion: "Use 'skinparam direction top to bottom layout' and group related components in rectangles or packages"
+
 # Global Settings
 settings:
   # Compliance scoring
