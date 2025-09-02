@@ -1,0 +1,12 @@
+{
+  "name": "default-project",
+  "constraints": {
+    "configFile": "./constraints.yaml",
+    "enabled": true
+  },
+  "databases": {
+    "analytics": {
+      "path": "/Users/q284340/Agentic/coding/integrations/mcp-constraint-monitor/constraint-analytics.db"
+    }
+  }
+}
