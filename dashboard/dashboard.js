@@ -33,9 +33,27 @@ class ConstraintDashboard {
         try {
             this.updateConnectionStatus(true);
             
-            // For now, use mock data since the API server isn't implemented yet
-            // In production, this would be: const response = await fetch(`${this.apiEndpoint}/status`);
-            this.data = await this.getMockData();
+            // Load data from real API endpoints
+            const [statusResponse, violationsResponse] = await Promise.all([
+                fetch(`${this.apiEndpoint}/status`).catch(() => ({ ok: false })),
+                fetch(`${this.apiEndpoint}/violations`).catch(() => ({ ok: false }))
+            ]);
+            
+            // Get real data if available, otherwise use mock data
+            if (statusResponse.ok && violationsResponse.ok) {
+                const statusData = await statusResponse.json();
+                const violationsData = await violationsResponse.json();
+                
+                this.data = {
+                    status: statusData,
+                    constraints: await this.getMockConstraints(), // Keep mock constraints for now
+                    violations: violationsData.violations || [],
+                    activity: this.generateActivityFromViolations(violationsData.violations || [])
+                };
+            } else {
+                console.log('API not available, using mock data');
+                this.data = await this.getMockData();
+            }
             
             this.updateDashboard(this.data);
             this.isConnected = true;
@@ -45,6 +63,60 @@ class ConstraintDashboard {
             this.updateConnectionStatus(false);
             this.showErrorMessage('Failed to connect to constraint monitor service');
         }
+    }
+
+    async getMockConstraints() {
+        // Return just the constraints part of mock data
+        return [
+            {
+                id: 'no-console-log',
+                pattern: 'console\\.log',
+                message: 'Use Logger.log() instead of console.log for better log management',
+                severity: 'warning',
+                enabled: true,
+                suggestion: 'Replace with: Logger.log(\'info\', \'category\', message)'
+            },
+            {
+                id: 'no-var-declarations',
+                pattern: '\\bvar\\s+',
+                message: 'Use \'let\' or \'const\' instead of \'var\'',
+                severity: 'warning',
+                enabled: true,
+                suggestion: 'Use \'let\' for mutable variables, \'const\' for immutable'
+            },
+            {
+                id: 'proper-error-handling',
+                pattern: 'catch\\s*\\([^)]*\\)\\s*\\{\\s*\\}',
+                message: 'Empty catch blocks should be avoided',
+                severity: 'error',
+                enabled: true,
+                suggestion: 'Add proper error handling or at minimum log the error'
+            },
+            {
+                id: 'no-hardcoded-secrets',
+                pattern: '(api[_-]?key|password|secret|token)\\s*[=:]\\s*[\'"][^\'\"]{8,}[\'"]',
+                message: 'Potential hardcoded secret detected',
+                severity: 'critical',
+                enabled: true,
+                suggestion: 'Use environment variables or secure key management'
+            },
+            {
+                id: 'no-eval-usage',
+                pattern: '\\beval\\s*\\(',
+                message: 'eval() usage detected - security risk',
+                severity: 'critical',
+                enabled: true,
+                suggestion: 'Avoid eval() - use safer alternatives for dynamic code execution'
+            },
+            {
+                id: 'plantuml-standard-styling',
+                pattern: '@startuml.*\\n(?!.*!include _standard-style\\.puml)',
+                message: 'PlantUML files must include the standard styling file',
+                severity: 'error',
+                enabled: true,
+                suggestion: 'Add !include _standard-style.puml after @startuml'
+            }
+        ];
     }
 
     async getMockData() {
@@ -59,56 +131,7 @@ class ConstraintDashboard {
                 risk_level: 'low',
                 last_updated: new Date().toISOString()
             },
-            constraints: [
-                {
-                    id: 'no-console-log',
-                    pattern: 'console\\.log',
-                    message: 'Use Logger.log() instead of console.log for better log management',
-                    severity: 'warning',
-                    enabled: true,
-                    suggestion: 'Replace with: Logger.log(\'info\', \'category\', message)'
-                },
-                {
-                    id: 'no-var-declarations',
-                    pattern: '\\bvar\\s+',
-                    message: 'Use \'let\' or \'const\' instead of \'var\'',
-                    severity: 'warning',
-                    enabled: true,
-                    suggestion: 'Use \'let\' for mutable variables, \'const\' for immutable'
-                },
-                {
-                    id: 'proper-error-handling',
-                    pattern: 'catch\\s*\\([^)]*\\)\\s*\\{\\s*\\}',
-                    message: 'Empty catch blocks should be avoided',
-                    severity: 'error',
-                    enabled: true,
-                    suggestion: 'Add proper error handling or at minimum log the error'
-                },
-                {
-                    id: 'no-hardcoded-secrets',
-                    pattern: '(api[_-]?key|password|secret|token)\\s*[=:]\\s*[\'"][^\'\"]{8,}[\'"]',
-                    message: 'Potential hardcoded secret detected',
-                    severity: 'critical',
-                    enabled: true,
-                    suggestion: 'Use environment variables or secure key management'
-                },
-                {
-                    id: 'no-eval-usage',
-                    pattern: '\\beval\\s*\\(',
-                    message: 'eval() usage detected - security risk',
-                    severity: 'critical',
-                    enabled: true,
-                    suggestion: 'Avoid eval() - use safer alternatives for dynamic code execution'
-                },
-                {
-                    id: 'proper-function-naming',
-                    pattern: 'function\\s+[a-z]',
-                    message: 'Function names should start with a verb (camelCase)',
-                    severity: 'info',
-                    enabled: true,
-                    suggestion: 'Use descriptive verb-based names: getUserData(), processResults()'
-                }
-            ],
+            constraints: await this.getMockConstraints(),
             violations: [],
             activity: [
                 {
@@ -138,6 +161,9 @@ class ConstraintDashboard {
         
         // Update constraints grid
         this.updateConstraintsGrid(data.constraints);
+        
+        // Update violations chart
+        this.updateViolationsChart(data.violations);
         
         // Update activity feed
         this.updateActivityFeed(data.activity);
@@ -238,6 +264,86 @@ class ConstraintDashboard {
         `;
         
         return element;
+    }
+
+    updateViolationsChart(violations) {
+        const chart = document.getElementById('violationsChart');
+        if (!chart) return;
+
+        if (!violations || violations.length === 0) {
+            chart.innerHTML = `
+                <div class="chart-placeholder">
+                    <span class="chart-icon">📊</span>
+                    <p>No recent violations</p>
+                </div>
+            `;
+            return;
+        }
+
+        // Create violations list
+        chart.innerHTML = `
+            <div class="violations-list">
+                <h3>Recent Violations (${violations.length})</h3>
+                <div class="violations-items">
+                    ${violations.map(violation => this.createViolationItem(violation)).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    createViolationItem(violation) {
+        const timeAgo = this.getTimeAgo(violation.timestamp);
+        const severityClass = violation.severity || 'warning';
+        
+        return `
+            <div class="violation-item ${severityClass}">
+                <div class="violation-header">
+                    <span class="violation-constraint">${violation.constraint_id || 'Unknown'}</span>
+                    <span class="violation-severity ${severityClass}">${severityClass}</span>
+                    <span class="violation-time">${timeAgo}</span>
+                </div>
+                <div class="violation-message">${violation.message || 'No message'}</div>
+                ${violation.tool ? `<div class="violation-tool">Tool: ${violation.tool}</div>` : ''}
+                ${violation.context ? `<div class="violation-context">Repository: ${violation.context}</div>` : ''}
+            </div>
+        `;
+    }
+
+    getTimeAgo(timestamp) {
+        if (!timestamp) return 'Unknown';
+        
+        const now = new Date();
+        const time = new Date(timestamp);
+        const diffMs = now - time;
+        
+        if (diffMs < 60000) return 'Just now';
+        if (diffMs < 3600000) return `${Math.floor(diffMs / 60000)}m ago`;
+        if (diffMs < 86400000) return `${Math.floor(diffMs / 3600000)}h ago`;
+        return `${Math.floor(diffMs / 86400000)}d ago`;
+    }
+
+    generateActivityFromViolations(violations) {
+        const activity = [
+            {
+                time: 'Just now',
+                message: 'System initialized successfully',
+                type: 'info'
+            }
+        ];
+        
+        if (violations && violations.length > 0) {
+            // Add recent violations as activity
+            violations.slice(-3).forEach(violation => {
+                activity.unshift({
+                    time: this.getTimeAgo(violation.timestamp),
+                    message: `${violation.severity.toUpperCase()}: ${violation.constraint_id}`,
+                    type: violation.severity === 'critical' ? 'error' : 
+                          violation.severity === 'error' ? 'warning' : 'info'
+                });
+            });
+        }
+        
+        return activity;
     }
 
     updateLastUpdatedTime() {

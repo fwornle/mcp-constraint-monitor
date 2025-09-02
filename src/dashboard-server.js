@@ -125,14 +125,72 @@ class DashboardServer {
 
     async handleGetViolations(req, res) {
         try {
-            // For now, return empty violations array
-            // In production, this would fetch from the violation database
-            const violations = [];
+            let violations = [];
             
-            res.json({
-                status: 'success',
-                data: violations
-            });
+            // Try to get enhanced live session violations
+            try {
+                const enhancedEndpointPath = join(__dirname, '../../../scripts/enhanced-constraint-endpoint.js');
+                const enhancedEndpoint = await import(enhancedEndpointPath);
+                
+                const liveViolations = await enhancedEndpoint.getLiveSessionViolations();
+                const history = await enhancedEndpoint.getEnhancedViolationHistory(20);
+                
+                // Transform violations for dashboard display
+                violations = (history.violations || []).map(violation => ({
+                    id: violation.id,
+                    constraint_id: violation.constraint_id,
+                    message: violation.message,
+                    severity: violation.severity,
+                    timestamp: violation.timestamp,
+                    tool: violation.tool,
+                    status: 'active',
+                    source: 'live_session',
+                    session_id: violation.sessionId,
+                    context: violation.context
+                }));
+                
+                // Add live session metadata
+                const responseData = {
+                    violations: violations,
+                    live_session: {
+                        active_count: liveViolations.active_session_count || 0,
+                        compliance_score: liveViolations.session_compliance_score || 10.0,
+                        trends: liveViolations.session_trends || 'stable',
+                        most_recent: liveViolations.most_recent
+                    },
+                    statistics: {
+                        total_count: history.total_count || 0,
+                        severity_breakdown: history.severity_breakdown || {},
+                        session_types: history.session_types || {}
+                    }
+                };
+                
+                res.json({
+                    status: 'success',
+                    data: responseData.violations,
+                    meta: {
+                        total: responseData.statistics.total_count,
+                        live_session: responseData.live_session,
+                        statistics: responseData.statistics,
+                        source: 'enhanced_live_logging'
+                    }
+                });
+                
+            } catch (enhancedError) {
+                logger.warn('Enhanced violations not available, using default', { error: enhancedError.message });
+                
+                // Fallback to empty violations
+                res.json({
+                    status: 'success',
+                    data: violations,
+                    meta: {
+                        total: 0,
+                        source: 'default',
+                        warning: 'Enhanced live logging not available'
+                    }
+                });
+            }
+            
         } catch (error) {
             logger.error('Failed to get violations', { error: error.message });
             res.status(500).json({
