@@ -44,11 +44,15 @@ class ConstraintDashboard {
                 const statusData = await statusResponse.json();
                 const violationsData = await violationsResponse.json();
                 
+                // Extract data from API response structure
+                const violations = violationsData.data || violationsData.violations || [];
+                const status = statusData.data || statusData;
+                
                 this.data = {
-                    status: statusData,
+                    status: status,
                     constraints: await this.getMockConstraints(), // Keep mock constraints for now
-                    violations: violationsData.violations || [],
-                    activity: this.generateActivityFromViolations(violationsData.violations || [])
+                    violations: violations,
+                    activity: this.generateActivityFromViolations(violations)
                 };
             } else {
                 console.log('API not available, using mock data');
@@ -280,32 +284,50 @@ class ConstraintDashboard {
             return;
         }
 
-        // Create violations list
+        // Create structured violations table
         chart.innerHTML = `
-            <div class="violations-list">
-                <h3>Recent Violations (${violations.length})</h3>
-                <div class="violations-items">
-                    ${violations.map(violation => this.createViolationItem(violation)).join('')}
-                </div>
+            <div class="violations-table-container">
+                <table class="violations-table">
+                    <thead>
+                        <tr>
+                            <th class="col-severity">Severity</th>
+                            <th class="col-constraint">Constraint</th>
+                            <th class="col-message">Message</th>
+                            <th class="col-tool">Tool</th>
+                            <th class="col-time">Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${violations.map(violation => this.createViolationRow(violation)).join('')}
+                    </tbody>
+                </table>
             </div>
         `;
     }
 
-    createViolationItem(violation) {
+    createViolationRow(violation) {
         const timeAgo = this.getTimeAgo(violation.timestamp);
         const severityClass = violation.severity || 'warning';
+        const toolName = violation.tool ? violation.tool.replace('mcp__constraint-monitor__', '') : 'unknown';
         
         return `
-            <div class="violation-item ${severityClass}">
-                <div class="violation-header">
-                    <span class="violation-constraint">${violation.constraint_id || 'Unknown'}</span>
-                    <span class="violation-severity ${severityClass}">${severityClass}</span>
-                    <span class="violation-time">${timeAgo}</span>
-                </div>
-                <div class="violation-message">${violation.message || 'No message'}</div>
-                ${violation.tool ? `<div class="violation-tool">Tool: ${violation.tool}</div>` : ''}
-                ${violation.context ? `<div class="violation-context">Repository: ${violation.context}</div>` : ''}
-            </div>
+            <tr class="violation-row ${severityClass}">
+                <td class="col-severity">
+                    <span class="severity-badge ${severityClass}">${severityClass.toUpperCase()}</span>
+                </td>
+                <td class="col-constraint">
+                    <code class="constraint-id">${violation.constraint_id || 'Unknown'}</code>
+                </td>
+                <td class="col-message">
+                    <span class="violation-message">${violation.message || 'No message'}</span>
+                </td>
+                <td class="col-tool">
+                    <span class="tool-name">${toolName}</span>
+                </td>
+                <td class="col-time">
+                    <span class="time-ago" title="${new Date(violation.timestamp).toLocaleString()}">${timeAgo}</span>
+                </td>
+            </tr>
         `;
     }
 
