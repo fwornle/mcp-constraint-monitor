@@ -1,0 +1,88 @@
+#!/usr/bin/env node
+
+/**
+ * Constraint Monitor Demo Script
+ * Demonstrates the complete dashboard and status line system
+ */
+
+import { DashboardServer } from '../src/dashboard-server.js';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execAsync = promisify(exec);
+
+console.log('🛡️  CONSTRAINT MONITOR DEMO');
+console.log('═'.repeat(50));
+
+console.log('\n📱 1. Status Line Output:');
+console.log('─'.repeat(30));
+
+try {
+    const { stdout } = await execAsync('node src/status/constraint-status-line.js');
+    const statusData = JSON.parse(stdout);
+    
+    console.log(`Text: ${statusData.text}`);
+    console.log(`Color: ${statusData.color}`);
+    console.log(`Click Action: ${statusData.onClick}`);
+    console.log('\nTooltip Preview:');
+    console.log('┌─────────────────────────────┐');
+    statusData.tooltip.split('\n').forEach(line => {
+        console.log(`│ ${line.padEnd(27)} │`);
+    });
+    console.log('└─────────────────────────────┘');
+    
+} catch (error) {
+    console.error('❌ Failed to get status line:', error.message);
+}
+
+console.log('\n🌐 2. Dashboard Server:');
+console.log('─'.repeat(30));
+
+try {
+    // Start dashboard server
+    const server = new DashboardServer(3001);
+    await server.start();
+    
+    console.log('✅ Dashboard server started');
+    console.log('🔗 URL: http://localhost:3001/dashboard');
+    console.log('🛠️  API: http://localhost:3001/api');
+    
+    // Test API endpoints
+    console.log('\n📊 3. API Endpoints Test:');
+    console.log('─'.repeat(30));
+    
+    const { default: fetch } = await import('node-fetch');
+    
+    // Test health endpoint
+    const healthResponse = await fetch('http://localhost:3001/api/health');
+    const health = await healthResponse.json();
+    console.log(`✅ Health: ${health.data.status}`);
+    
+    // Test status endpoint
+    const statusResponse = await fetch('http://localhost:3001/api/status');
+    const status = await statusResponse.json();
+    console.log(`📊 Compliance: ${status.data.compliance_score}`);
+    console.log(`⚠️  Violations: ${status.data.active_violations}`);
+    
+    // Test constraints endpoint
+    const constraintsResponse = await fetch('http://localhost:3001/api/constraints');
+    const constraints = await constraintsResponse.json();
+    console.log(`📋 Constraints: ${constraints.data.length} rules loaded`);
+    
+    console.log('\n🎉 Demo Complete!');
+    console.log('═'.repeat(50));
+    console.log('🖱️  Dashboard is now running at: http://localhost:3001/dashboard');
+    console.log('⌨️  Press Ctrl+C to stop the demo server');
+    
+    // Keep server running
+    process.on('SIGINT', async () => {
+        console.log('\n🛑 Shutting down demo server...');
+        await server.stop();
+        console.log('✅ Demo complete!');
+        process.exit(0);
+    });
+    
+} catch (error) {
+    console.error('❌ Demo failed:', error.message);
+    process.exit(1);
+}

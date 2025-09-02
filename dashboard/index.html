@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Constraint Monitor Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
+</head>
+<body>
+    <div class="dashboard-container">
+        <header class="dashboard-header">
+            <div class="header-content">
+                <h1><span class="shield-icon">🛡️</span> Constraint Monitor</h1>
+                <div class="status-indicator" id="connectionStatus">
+                    <span class="dot"></span>
+                    <span class="text">Connected</span>
+                </div>
+            </div>
+        </header>
+
+        <div class="dashboard-content">
+            <!-- Overview Cards -->
+            <div class="overview-section">
+                <div class="metric-card compliance-card">
+                    <div class="metric-header">
+                        <span class="metric-icon">📊</span>
+                        <h3>Compliance Score</h3>
+                    </div>
+                    <div class="metric-value" id="complianceScore">8.5</div>
+                    <div class="metric-subtitle">Out of 10</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="complianceProgress"></div>
+                    </div>
+                </div>
+
+                <div class="metric-card violations-card">
+                    <div class="metric-header">
+                        <span class="metric-icon">⚠️</span>
+                        <h3>Active Violations</h3>
+                    </div>
+                    <div class="metric-value" id="violationCount">0</div>
+                    <div class="metric-subtitle">Current issues</div>
+                </div>
+
+                <div class="metric-card trajectory-card">
+                    <div class="metric-header">
+                        <span class="metric-icon" id="trajectoryIcon">🔍</span>
+                        <h3>Trajectory</h3>
+                    </div>
+                    <div class="metric-value" id="trajectoryStatus">Exploring</div>
+                    <div class="metric-subtitle">Current activity</div>
+                </div>
+
+                <div class="metric-card risk-card">
+                    <div class="metric-header">
+                        <span class="metric-icon">🎯</span>
+                        <h3>Risk Level</h3>
+                    </div>
+                    <div class="metric-value" id="riskLevel">Low</div>
+                    <div class="metric-subtitle">Assessment</div>
+                </div>
+            </div>
+
+            <!-- Constraints Overview -->
+            <div class="constraints-section">
+                <h2>📋 Constraint Rules</h2>
+                <div class="constraints-grid" id="constraintsGrid">
+                    <!-- Constraints will be populated dynamically -->
+                </div>
+            </div>
+
+            <!-- Violation History -->
+            <div class="violations-section">
+                <h2>📈 Violation History</h2>
+                <div class="violations-chart" id="violationsChart">
+                    <div class="chart-placeholder">
+                        <span class="chart-icon">📊</span>
+                        <p>No recent violations</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Real-time Activity -->
+            <div class="activity-section">
+                <h2>🕐 Real-time Activity</h2>
+                <div class="activity-feed" id="activityFeed">
+                    <div class="activity-item">
+                        <span class="activity-time">Just now</span>
+                        <span class="activity-message">System initialized successfully</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer class="dashboard-footer">
+            <div class="footer-content">
+                <span>MCP Constraint Monitor Dashboard</span>
+                <span class="update-time">Last updated: <span id="lastUpdateTime">--</span></span>
+            </div>
+        </footer>
+    </div>
+
+    <script src="dashboard.js"></script>
+</body>
+</html>

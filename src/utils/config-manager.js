@@ -116,4 +116,75 @@ export class ConfigManager {
     
     current[keys[keys.length - 1]] = value;
   }
+
+  getConstraints() {
+    const constraintsPath = join(process.cwd(), 'constraints.yaml');
+    
+    if (!existsSync(constraintsPath)) {
+      logger.warn('constraints.yaml not found, using default constraints');
+      return this.getDefaultConstraints();
+    }
+    
+    try {
+      const content = readFileSync(constraintsPath, 'utf8');
+      const data = parse(content);
+      return data.constraints || [];
+    } catch (error) {
+      logger.error('Failed to parse constraints.yaml', { error: error.message });
+      return this.getDefaultConstraints();
+    }
+  }
+
+  getDefaultConstraints() {
+    return [
+      {
+        id: 'no-console-log',
+        pattern: 'console\\.log',
+        message: 'Use Logger.log() instead of console.log for better log management',
+        severity: 'warning',
+        enabled: true,
+        suggestion: 'Replace with: Logger.log(\'info\', \'category\', message)'
+      },
+      {
+        id: 'no-var-declarations',
+        pattern: '\\bvar\\s+',
+        message: 'Use \'let\' or \'const\' instead of \'var\'',
+        severity: 'warning',
+        enabled: true,
+        suggestion: 'Use \'let\' for mutable variables, \'const\' for immutable'
+      },
+      {
+        id: 'proper-error-handling',
+        pattern: 'catch\\s*\\([^)]*\\)\\s*\\{\\s*\\}',
+        message: 'Empty catch blocks should be avoided',
+        severity: 'error',
+        enabled: true,
+        suggestion: 'Add proper error handling or at minimum log the error'
+      },
+      {
+        id: 'no-hardcoded-secrets',
+        pattern: '(api[_-]?key|password|secret|token)\\s*[=:]\\s*[\'"][^\'\"]{8,}[\'"]',
+        message: 'Potential hardcoded secret detected',
+        severity: 'critical',
+        enabled: true,
+        suggestion: 'Use environment variables or secure key management'
+      },
+      {
+        id: 'no-eval-usage',
+        pattern: '\\beval\\s*\\(',
+        message: 'eval() usage detected - security risk',
+        severity: 'critical',
+        enabled: true,
+        suggestion: 'Avoid eval() - use safer alternatives for dynamic code execution'
+      },
+      {
+        id: 'proper-function-naming',
+        pattern: 'function\\s+[a-z]',
+        message: 'Function names should start with a verb (camelCase)',
+        severity: 'info',
+        enabled: true,
+        suggestion: 'Use descriptive verb-based names: getUserData(), processResults()'
+      }
+    ];
+  }
 }

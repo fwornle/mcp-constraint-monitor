@@ -14,10 +14,11 @@ Add intelligent code quality monitoring to any Claude Code project with zero con
 
 - **🛡️ Live Guardrails**: Real-time constraint violation detection
 - **📊 Compliance Scoring**: Automated code quality assessment
+- **🌐 Web Dashboard**: Comprehensive constraint management interface
 - **🔍 Pattern Detection**: Configurable rules for code patterns
 - **⚡ Ultra-Fast**: Sub-10ms constraint checking
 - **🧠 AI-Powered**: Optional semantic analysis with Groq
-- **📈 Status Integration**: Claude Code status line support
+- **📈 Enhanced Status Line**: Rich tooltips with visual progress bars
 - **🔧 Zero Config**: Works out of the box with sensible defaults
 - **🌐 Universal**: Works with any Claude Code project
 
@@ -78,23 +79,73 @@ The server exposes these tools for Claude Code:
 
 ---
 
-## 🛡️ Status Line Integration
+## 🛡️ Status Line & Dashboard Integration
 
-The constraint monitor integrates with Claude Code's status line:
+### Enhanced Status Line
+
+The constraint monitor provides rich status line integration with enhanced tooltips:
 
 ```
-🛡️ 8.5 🔍EX ⚠️2
+🛡️ 8.5 🔍EX
 ```
 
+**Hover Tooltip:**
+```
+🛡️ Constraint Monitor Status
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 Compliance: 8.5/10.0
+   █████████████░░ (Good)
+✅ Status: No active violations
+🔍 Activity: Exploring
+🟢 Risk Level: Low
+🔧 Interventions: 0
+🟢 System: Operational
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🖱️  Click to open dashboard
+🔄 Updates every 5 seconds
+```
+
+**Status Elements:**
 - **🛡️ 8.5** - Compliance score (0-10)
-- **🔍EX** - Current trajectory (Exploring)  
-- **⚠️2** - Active violations count
+- **🔍EX** - Current trajectory (Exploring, On Track, Implementing, etc.)
+- **Click Action** - Opens web dashboard
 
 **Status Colors:**
 - 🟢 Green: Excellent compliance (9.0+)
-- 🔵 Cyan: Good compliance (7.0-8.9)
-- 🟡 Yellow: Warning compliance (<7.0)
+- 🔵 Cyan: Good compliance (7.0-8.9)  
+- 🟡 Yellow: Warning compliance (5.0-6.9)
 - 🔴 Red: Critical violations or offline
+
+### Web Dashboard
+
+Access the comprehensive web dashboard at `http://localhost:3001/dashboard`
+
+**Dashboard Features:**
+- **📊 Real-time Metrics**: Live compliance scoring and violation tracking
+- **📋 Constraint Management**: View and manage all constraint rules
+- **⚡ Activity Feed**: Real-time system activity and events
+- **📱 Responsive Design**: Works on desktop and mobile devices
+- **🌙 Dark/Light Mode**: Automatic theme detection
+
+**Quick Access:**
+```bash
+# Launch dashboard and open browser
+./bin/dashboard
+
+# Custom port
+./bin/dashboard --port=8080
+
+# Server only (no browser)
+./bin/dashboard --standalone
+```
+
+**API Endpoints:**
+- `GET /api/health` - System health and uptime
+- `GET /api/status` - Current compliance metrics  
+- `GET /api/constraints` - All constraint rules
+- `GET /api/violations` - Active violation history
+- `GET /api/activity` - Real-time event feed
 
 ---
 
@@ -196,6 +247,7 @@ npm run setup
 npm test                    # Run tests
 npm run start              # Start server
 npm run dev                # Development mode
+./bin/demo                 # Complete system demo
 ```
 
 ### Custom Engines

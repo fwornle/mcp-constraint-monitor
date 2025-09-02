@@ -259,34 +259,81 @@ class ConstraintStatusLine {
   }
 
   buildTooltip(data) {
-    const lines = ['Constraint Monitor Status:'];
+    const lines = ['🛡️ Constraint Monitor Status'];
+    lines.push('━'.repeat(28));
     
+    // Compliance section
     if (data.compliance !== undefined) {
-      lines.push(`• Compliance: ${data.compliance.toFixed(1)}/10`);
+      const score = data.compliance.toFixed(1);
+      const scoreBar = this.getScoreBar(data.compliance);
+      lines.push(`📊 Compliance: ${score}/10.0`);
+      lines.push(`   ${scoreBar} ${this.getComplianceLabel(data.compliance)}`);
     }
     
+    // Violations section
     if (data.violations > 0) {
-      lines.push(`• Active violations: ${data.violations}`);
+      lines.push(`⚠️  Active Issues: ${data.violations} violation${data.violations > 1 ? 's' : ''}`);
     } else {
-      lines.push('• No active violations');
+      lines.push('✅ Status: No active violations');
     }
     
+    // Activity section
     if (data.trajectory) {
-      lines.push(`• Trajectory: ${data.trajectory.replace('_', ' ')}`);
+      const trajectoryIcon = this.getTrajectoryIcon(data.trajectory);
+      const trajectoryText = data.trajectory.replace('_', ' ');
+      lines.push(`${trajectoryIcon} Activity: ${this.capitalizeFirst(trajectoryText)}`);
     }
     
+    // Risk assessment
     if (data.risk) {
-      lines.push(`• Risk level: ${data.risk}`);
+      const riskIcon = this.getRiskIcon(data.risk);
+      lines.push(`${riskIcon} Risk Level: ${this.capitalizeFirst(data.risk)}`);
     }
     
+    // Performance metrics
     if (data.interventions !== undefined) {
-      lines.push(`• Interventions: ${data.interventions}`);
+      lines.push(`🔧 Interventions: ${data.interventions}`);
     }
+    
+    // System health
+    const healthIcon = data.healthy !== false ? '🟢' : '🔴';
+    const healthText = data.healthy !== false ? 'Operational' : 'Issues Detected';
+    lines.push(`${healthIcon} System: ${healthText}`);
     
     lines.push('');
-    lines.push('Click to open constraint dashboard');
+    lines.push('━'.repeat(28));
+    lines.push('🖱️  Click to open dashboard');
+    lines.push('🔄 Updates every 5 seconds');
     
     return lines.join('\n');
+  }
+
+  getScoreBar(score) {
+    const width = 15;
+    const filled = Math.round((score / 10) * width);
+    const empty = width - filled;
+    return '█'.repeat(filled) + '░'.repeat(empty);
+  }
+
+  getComplianceLabel(score) {
+    if (score >= 9.0) return '(Excellent)';
+    if (score >= 7.0) return '(Good)';
+    if (score >= 5.0) return '(Fair)';
+    return '(Needs Attention)';
+  }
+
+  getRiskIcon(risk) {
+    const icons = {
+      'low': '🟢',
+      'medium': '🟡',
+      'high': '🔴',
+      'critical': '🚨'
+    };
+    return icons[risk] || '❓';
+  }
+
+  capitalizeFirst(str) {
+    return str.charAt(0).toUpperCase() + str.slice(1);
   }
 
   truncateText(text) {
