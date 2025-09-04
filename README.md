@@ -17,7 +17,7 @@ Add intelligent code quality monitoring to any Claude Code project with zero con
 - **🌐 Web Dashboard**: Comprehensive constraint management interface
 - **🔍 Pattern Detection**: Configurable rules for code patterns
 - **⚡ Ultra-Fast**: Sub-10ms constraint checking
-- **🧠 AI-Powered**: Optional semantic analysis with Groq
+- **🧠 AI-Powered**: Optional semantic analysis with Grok
 - **📈 Enhanced Status Line**: Rich tooltips with visual progress bars
 - **🔧 Zero Config**: Works out of the box with sensible defaults
 - **🌐 Universal**: Works with any Claude Code project

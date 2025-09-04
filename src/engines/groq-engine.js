@@ -1,11 +1,11 @@
-import Groq from 'groq-sdk';
+import Groq from 'groq-sdk'; // Note: Using for XAI/Grok API compatibility
 import { logger, PerformanceTimer } from '../utils/logger.js';
 
-export class GroqSemanticEngine {
+export class GrokSemanticEngine {
   constructor(config = {}) {
     this.config = {
-      apiKey: config.apiKey || process.env.GROQ_API_KEY,
-      model: config.model || 'mixtral-8x7b-32768', // 1000+ tokens/sec
+      apiKey: config.apiKey || process.env.GROK_API_KEY,
+      model: config.model || 'grok-2-1212', // 1000+ tokens/sec
       maxTokens: config.maxTokens || 200,
       temperature: config.temperature || 0.1,
       timeout: config.timeout || 10000, // 10s timeout
@@ -13,10 +13,10 @@ export class GroqSemanticEngine {
     };
 
     if (!this.config.apiKey) {
-      throw new Error('GROQ_API_KEY environment variable is required');
+      throw new Error('GROK_API_KEY environment variable is required');
     }
 
-    this.groq = new Groq({
+    this.grok = new Groq({
       apiKey: this.config.apiKey,
       timeout: this.config.timeout
     });

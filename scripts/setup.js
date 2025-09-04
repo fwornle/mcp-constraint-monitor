@@ -69,7 +69,7 @@ async function setupConfiguration() {
 async function checkEnvironment() {
   console.log('🌍 Checking environment...');
   
-  const optionalVars = ['GROQ_API_KEY', 'QDRANT_HOST', 'ANALYTICS_DB_PATH'];
+  const optionalVars = ['GROK_API_KEY', 'QDRANT_HOST', 'ANALYTICS_DB_PATH'];
   const warnings = [];
   
   for (const varName of optionalVars) {
