@@ -198,7 +198,7 @@ constraints:
 Optional configuration via environment:
 
 ```bash
-export GROQ_API_KEY="your-key"          # Enable AI analysis
+export XAI_API_KEY="your-key"           # Enable AI analysis
 export QDRANT_HOST="localhost"          # Vector database
 export ANALYTICS_DB_PATH="./data.db"    # Persistent analytics
 ```
