@@ -190,4 +190,130 @@ export class ConfigManager {
       }
     ];
   }
+
+  getConstraintGroups() {
+    // Look for constraints.yaml relative to this module's directory
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+    const constraintsPath = join(__dirname, '../../constraints.yaml');
+    
+    if (!existsSync(constraintsPath)) {
+      logger.warn(`constraints.yaml not found at ${constraintsPath}, using default groups`);
+      return this.getDefaultConstraintGroups();
+    }
+    
+    try {
+      const content = readFileSync(constraintsPath, 'utf8');
+      const data = parse(content);
+      return data.constraint_groups || [];
+    } catch (error) {
+      logger.error('Failed to parse constraint groups from constraints.yaml', { error: error.message });
+      return this.getDefaultConstraintGroups();
+    }
+  }
+
+  getConstraintsWithGroups() {
+    const constraints = this.getConstraints();
+    const groups = this.getConstraintGroups();
+    
+    // Create group lookup
+    const groupMap = groups.reduce((acc, group) => {
+      acc[group.id] = group;
+      return acc;
+    }, {});
+    
+    // Group constraints by their group ID
+    const constraintsByGroup = constraints.reduce((acc, constraint) => {
+      const groupId = constraint.group || 'ungrouped';
+      if (!acc[groupId]) {
+        acc[groupId] = {
+          group: groupMap[groupId] || {
+            id: groupId,
+            name: groupId === 'ungrouped' ? 'Ungrouped Constraints' : groupId,
+            description: 'Constraints without specific group assignment',
+            icon: '📋',
+            color: '#9E9E9E'
+          },
+          constraints: []
+        };
+      }
+      acc[groupId].constraints.push(constraint);
+      return acc;
+    }, {});
+    
+    return {
+      groups: Object.values(constraintsByGroup),
+      total_constraints: constraints.length,
+      total_groups: Object.keys(constraintsByGroup).length,
+      enabled_constraints: constraints.filter(c => c.enabled).length
+    };
+  }
+
+  getConstraintSettings() {
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+    const constraintsPath = join(__dirname, '../../constraints.yaml');
+    
+    if (!existsSync(constraintsPath)) {
+      return this.getDefaultSettings();
+    }
+    
+    try {
+      const content = readFileSync(constraintsPath, 'utf8');
+      const data = parse(content);
+      return data.settings || this.getDefaultSettings();
+    } catch (error) {
+      logger.error('Failed to parse settings from constraints.yaml', { error: error.message });
+      return this.getDefaultSettings();
+    }
+  }
+
+  getDefaultConstraintGroups() {
+    return [
+      {
+        id: 'code_quality',
+        name: 'Code Quality Standards',
+        description: 'Basic code quality and best practices',
+        icon: '🔧',
+        color: '#4CAF50'
+      },
+      {
+        id: 'security',
+        name: 'Security Requirements',
+        description: 'Security-focused constraints and vulnerability prevention',
+        icon: '🔒',
+        color: '#F44336'
+      },
+      {
+        id: 'architecture',
+        name: 'Architecture Guidelines',
+        description: 'Development practices and architectural standards',
+        icon: '🏗️',
+        color: '#2196F3'
+      }
+    ];
+  }
+
+  getDefaultSettings() {
+    return {
+      compliance: {
+        excellent_threshold: 9.0,
+        good_threshold: 7.0,
+        warning_threshold: 5.0
+      },
+      risk_levels: {
+        critical_violations_for_high_risk: 1,
+        error_violations_for_medium_risk: 3,
+        warning_violations_for_low_risk: 10
+      },
+      monitoring: {
+        cache_timeout: 5000,
+        max_history: 1000,
+        auto_cleanup: true
+      },
+      groups: {
+        show_empty_groups: false,
+        collapse_disabled_groups: true,
+        sort_by_severity: true
+      }
+    };
+  }
 }

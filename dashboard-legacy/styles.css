@@ -617,3 +617,159 @@ body {
     text-align: center;
     margin: 1rem 0;
 }
+
+/* Constraint Group Styles */
+.constraint-group {
+    --group-color: var(--secondary-color);
+    background-color: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-left: 4px solid var(--group-color);
+    border-radius: var(--border-radius);
+    margin-bottom: 1rem;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.constraint-group:hover {
+    box-shadow: var(--shadow-lg);
+}
+
+.constraint-group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    cursor: pointer;
+    background-color: rgba(var(--group-color), 0.05);
+    border-bottom: 1px solid var(--border-color);
+    transition: background-color 0.2s ease;
+}
+
+.constraint-group-header:hover {
+    background-color: rgba(var(--group-color), 0.1);
+}
+
+.constraint-group-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex: 1;
+}
+
+.constraint-group-icon {
+    font-size: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    background-color: rgba(var(--group-color), 0.1);
+}
+
+.constraint-group-details h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.constraint-group-details p {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin: 0.25rem 0 0 0;
+}
+
+.constraint-group-stats {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.constraint-group-count {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    background-color: var(--bg-tertiary);
+    padding: 0.25rem 0.5rem;
+    border-radius: 1rem;
+}
+
+.constraint-group-toggle {
+    font-size: 1rem;
+    color: var(--text-secondary);
+    transition: transform 0.3s ease;
+}
+
+.constraint-group.collapsed .constraint-group-toggle {
+    transform: rotate(-90deg);
+}
+
+.constraint-group-content {
+    transition: all 0.3s ease;
+    overflow: hidden;
+}
+
+.constraint-group.collapsed .constraint-group-content {
+    max-height: 0;
+    opacity: 0;
+}
+
+.constraint-group:not(.collapsed) .constraint-group-content {
+    max-height: none;
+    opacity: 1;
+}
+
+/* Grouped constraint items */
+.constraint-item.grouped {
+    margin: 0;
+    border: none;
+    border-bottom: 1px solid var(--border-color);
+    border-radius: 0;
+    background-color: transparent;
+}
+
+.constraint-item.grouped:last-child {
+    border-bottom: none;
+}
+
+.constraint-item.grouped:hover {
+    background-color: var(--bg-secondary);
+}
+
+.constraint-suggestion {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    background-color: var(--bg-secondary);
+    padding: 0.5rem;
+    margin-top: 0.5rem;
+    border-radius: 0.375rem;
+    border-left: 3px solid var(--info-color);
+}
+
+/* Responsive behavior for groups */
+@media (max-width: 768px) {
+    .constraint-group-header {
+        padding: 0.75rem;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+    
+    .constraint-group-info {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+        width: 100%;
+    }
+    
+    .constraint-group-stats {
+        align-self: flex-end;
+    }
+    
+    .constraint-group-icon {
+        width: 2rem;
+        height: 2rem;
+        font-size: 1.25rem;
+    }
+}

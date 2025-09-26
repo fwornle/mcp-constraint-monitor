@@ -9,6 +9,7 @@ import express from 'express';
 import { createServer } from 'http';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { readFileSync } from 'fs';
 import cors from 'cors';
 import { ConfigManager } from './utils/config-manager.js';
 import { StatusGenerator } from './status/status-generator.js';
@@ -63,6 +64,7 @@ class DashboardServer {
         this.app.get('/api/violations', this.handleGetViolations.bind(this));
         this.app.get('/api/activity', this.handleGetActivity.bind(this));
         this.app.get('/api/health', this.handleHealthCheck.bind(this));
+        this.app.get('/api/projects', this.handleGetProjects.bind(this));
         
         // Constraint management
         this.app.post('/api/constraints/:id/toggle', this.handleToggleConstraint.bind(this));
@@ -100,19 +102,54 @@ class DashboardServer {
 
     async handleGetConstraints(req, res) {
         try {
-            const constraints = this.config.getConstraints();
+            // Check if grouped data is requested
+            const includeGroups = req.query.grouped === 'true';
             
-            res.json({
-                status: 'success',
-                data: constraints.map(constraint => ({
-                    id: constraint.id,
-                    pattern: constraint.pattern,
-                    message: constraint.message,
-                    severity: constraint.severity,
-                    enabled: constraint.enabled !== false,
-                    suggestion: constraint.suggestion || null
-                }))
-            });
+            if (includeGroups) {
+                // Return grouped constraints with metadata
+                const groupedData = this.config.getConstraintsWithGroups();
+                const settings = this.config.getConstraintSettings();
+                
+                res.json({
+                    status: 'success',
+                    data: {
+                        constraints: groupedData.groups.map(groupData => ({
+                            group: groupData.group,
+                            constraints: groupData.constraints.map(constraint => ({
+                                id: constraint.id,
+                                group: constraint.group,
+                                pattern: constraint.pattern,
+                                message: constraint.message,
+                                severity: constraint.severity,
+                                enabled: constraint.enabled !== false,
+                                suggestion: constraint.suggestion || null
+                            }))
+                        })),
+                        metadata: {
+                            total_constraints: groupedData.total_constraints,
+                            total_groups: groupedData.total_groups,
+                            enabled_constraints: groupedData.enabled_constraints,
+                            settings: settings
+                        }
+                    }
+                });
+            } else {
+                // Return flat constraints list (legacy format)
+                const constraints = this.config.getConstraints();
+                
+                res.json({
+                    status: 'success',
+                    data: constraints.map(constraint => ({
+                        id: constraint.id,
+                        group: constraint.group,
+                        pattern: constraint.pattern,
+                        message: constraint.message,
+                        severity: constraint.severity,
+                        enabled: constraint.enabled !== false,
+                        suggestion: constraint.suggestion || null
+                    }))
+                });
+            }
         } catch (error) {
             logger.error('Failed to get constraints', { error: error.message });
             res.status(500).json({
@@ -263,6 +300,80 @@ class DashboardServer {
             res.status(500).json({
                 status: 'error',
                 message: 'Health check failed',
+                error: error.message
+            });
+        }
+    }
+
+    async handleGetProjects(req, res) {
+        try {
+            const lslRegistryPath = join(__dirname, '../../../.global-lsl-registry.json');
+            let projects = [];
+            let currentProject = null;
+
+            try {
+                const registryData = JSON.parse(readFileSync(lslRegistryPath, 'utf8'));
+                
+                // Get current project (where we're running from)
+                const cwd = process.cwd();
+                
+                projects = Object.entries(registryData.projects || {}).map(([projectName, projectInfo]) => {
+                    const isActive = projectInfo.status === 'active';
+                    const isCurrent = cwd.includes(projectInfo.projectPath);
+                    
+                    if (isCurrent) {
+                        currentProject = projectName;
+                    }
+
+                    return {
+                        name: projectName,
+                        path: projectInfo.projectPath,
+                        status: projectInfo.status,
+                        active: isActive,
+                        current: isCurrent,
+                        pid: projectInfo.monitorPid,
+                        startTime: projectInfo.startTime,
+                        lastHealthCheck: projectInfo.lastHealthCheck,
+                        exchanges: projectInfo.exchanges || 0
+                    };
+                });
+                
+            } catch (error) {
+                logger.warn('Could not read LSL registry, using fallback', { error: error.message });
+                
+                // Fallback: just return current project info
+                const cwd = process.cwd();
+                const projectName = cwd.split('/').pop();
+                currentProject = projectName;
+                
+                projects = [{
+                    name: projectName,
+                    path: cwd,
+                    status: 'active',
+                    active: true,
+                    current: true,
+                    pid: process.pid,
+                    startTime: Date.now(),
+                    lastHealthCheck: Date.now(),
+                    exchanges: 0
+                }];
+            }
+
+            res.json({
+                status: 'success',
+                data: {
+                    projects: projects,
+                    currentProject: currentProject,
+                    total: projects.length,
+                    active: projects.filter(p => p.active).length
+                }
+            });
+            
+        } catch (error) {
+            logger.error('Failed to get projects', { error: error.message });
+            res.status(500).json({
+                status: 'error',
+                message: 'Failed to retrieve projects',
                 error: error.message
             });
         }

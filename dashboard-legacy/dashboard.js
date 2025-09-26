@@ -33,10 +33,10 @@ class ConstraintDashboard {
         try {
             this.updateConnectionStatus(true);
             
-            // Load data from real API endpoints
+            // Load data from real API endpoints with grouped constraints
             const [statusResponse, constraintsResponse, violationsResponse] = await Promise.all([
                 fetch(`${this.apiEndpoint}/status`).catch(() => ({ ok: false })),
-                fetch(`${this.apiEndpoint}/constraints`).catch(() => ({ ok: false })),
+                fetch(`${this.apiEndpoint}/constraints?grouped=true`).catch(() => ({ ok: false })),
                 fetch(`${this.apiEndpoint}/violations`).catch(() => ({ ok: false }))
             ]);
             
@@ -49,13 +49,27 @@ class ConstraintDashboard {
                 // Extract data from API response structure
                 const violations = violationsData.data || violationsData.violations || [];
                 const status = statusData.data || statusData;
-                const constraints = constraintsData.data || constraintsData.constraints || [];
+                
+                // Handle both grouped and flat constraint formats
+                let constraints = [];
+                let groupedConstraints = null;
+                
+                if (constraintsData.data && constraintsData.data.constraints) {
+                    // Grouped format from API
+                    groupedConstraints = constraintsData.data.constraints;
+                    constraints = groupedConstraints.flatMap(group => group.constraints);
+                } else {
+                    // Flat format fallback
+                    constraints = constraintsData.data || constraintsData.constraints || [];
+                }
                 
                 this.data = {
                     status: status,
                     constraints: constraints,
+                    groupedConstraints: groupedConstraints,
                     violations: violations,
-                    activity: this.generateActivityFromViolations(violations)
+                    activity: this.generateActivityFromViolations(violations),
+                    metadata: constraintsData.data ? constraintsData.data.metadata : null
                 };
             } else {
                 console.log('API not available, using mock data');
@@ -166,8 +180,8 @@ class ConstraintDashboard {
         // Update overview metrics
         this.updateOverviewMetrics(data.status);
         
-        // Update constraints grid
-        this.updateConstraintsGrid(data.constraints);
+        // Update constraints grid with grouped support
+        this.updateConstraintsGrid(data.constraints, data.groupedConstraints);
         
         // Update violations chart
         this.updateViolationsChart(data.violations);
@@ -218,16 +232,25 @@ class ConstraintDashboard {
         }
     }
 
-    updateConstraintsGrid(constraints) {
+    updateConstraintsGrid(constraints, groupedConstraints = null) {
         const grid = document.getElementById('constraintsGrid');
         if (!grid) return;
 
         grid.innerHTML = '';
         
-        constraints.forEach(constraint => {
-            const constraintElement = this.createConstraintElement(constraint);
-            grid.appendChild(constraintElement);
-        });
+        if (groupedConstraints && groupedConstraints.length > 0) {
+            // Render grouped constraints
+            groupedConstraints.forEach(groupData => {
+                const groupElement = this.createConstraintGroupElement(groupData);
+                grid.appendChild(groupElement);
+            });
+        } else {
+            // Fallback to flat constraint list
+            constraints.forEach(constraint => {
+                const constraintElement = this.createConstraintElement(constraint);
+                grid.appendChild(constraintElement);
+            });
+        }
     }
 
     createConstraintElement(constraint) {
@@ -245,6 +268,55 @@ class ConstraintDashboard {
                 <span>${constraint.enabled ? 'Enabled' : 'Disabled'}</span>
             </div>
         `;
+        
+        return element;
+    }
+
+    createConstraintGroupElement(groupData) {
+        const element = document.createElement('div');
+        element.className = 'constraint-group';
+        
+        const group = groupData.group;
+        const constraints = groupData.constraints;
+        const enabledCount = constraints.filter(c => c.enabled).length;
+        const totalCount = constraints.length;
+        
+        element.innerHTML = `
+            <div class="constraint-group-header" onclick="this.closest('.constraint-group').classList.toggle('collapsed')">
+                <div class="constraint-group-info">
+                    <span class="constraint-group-icon">${group.icon || '📋'}</span>
+                    <div class="constraint-group-details">
+                        <h3 class="constraint-group-name">${group.name}</h3>
+                        <p class="constraint-group-description">${group.description}</p>
+                    </div>
+                </div>
+                <div class="constraint-group-stats">
+                    <span class="constraint-group-count">${enabledCount}/${totalCount} enabled</span>
+                    <span class="constraint-group-toggle">▼</span>
+                </div>
+            </div>
+            <div class="constraint-group-content">
+                ${constraints.map(constraint => `
+                    <div class="constraint-item grouped">
+                        <div class="constraint-header">
+                            <span class="constraint-id">${constraint.id}</span>
+                            <span class="constraint-severity ${constraint.severity}">${constraint.severity}</span>
+                        </div>
+                        <div class="constraint-message">${constraint.message}</div>
+                        <div class="constraint-enabled">
+                            <span class="constraint-toggle ${constraint.enabled ? 'enabled' : 'disabled'}"></span>
+                            <span>${constraint.enabled ? 'Enabled' : 'Disabled'}</span>
+                        </div>
+                        ${constraint.suggestion ? `<div class="constraint-suggestion">💡 ${constraint.suggestion}</div>` : ''}
+                    </div>
+                `).join('')}
+            </div>
+        `;
+        
+        // Apply group color as accent
+        if (group.color) {
+            element.style.setProperty('--group-color', group.color);
+        }
         
         return element;
     }
