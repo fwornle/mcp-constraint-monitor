@@ -20,7 +20,7 @@ import { logger } from './utils/logger.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 class DashboardServer {
-    constructor(port = 3001) {
+    constructor(port = 3031) {
         this.port = port;
         this.app = express();
         this.server = null;
@@ -67,12 +67,57 @@ class DashboardServer {
         this.app.get('/api/health', this.handleHealthCheck.bind(this));
         this.app.get('/api/projects', this.handleGetProjects.bind(this));
         
+        // Project selection endpoint
+        this.app.post('/api/projects/select', this.handleSelectProject.bind(this));
+        
         // Constraint management
         this.app.post('/api/constraints/:id/toggle', this.handleToggleConstraint.bind(this));
         this.app.post('/api/violations/:id/resolve', this.handleResolveViolation.bind(this));
         
         // Error handling
         this.app.use(this.handleError.bind(this));
+    }
+
+    getCurrentProjectPath(req) {
+        try {
+            // First try to get project from query parameter or request header
+            const requestedProject = req.query.project || req.headers['x-project-name'];
+            
+            const lslRegistryPath = join(__dirname, '../../../.global-lsl-registry.json');
+            
+            try {
+                const registryData = JSON.parse(readFileSync(lslRegistryPath, 'utf8'));
+                
+                // If specific project requested, use that
+                if (requestedProject && registryData.projects[requestedProject]) {
+                    const projectPath = registryData.projects[requestedProject].projectPath;
+                    logger.info(`Using requested project: ${requestedProject}`, { path: projectPath });
+                    return projectPath;
+                }
+                
+                // Fallback: find active project with most recent activity
+                const activeProjects = Object.entries(registryData.projects || {})
+                    .filter(([name, info]) => info.status === 'active')
+                    .sort(([,a], [,b]) => (b.lastHealthCheck || 0) - (a.lastHealthCheck || 0));
+                
+                if (activeProjects.length > 0) {
+                    const [projectName, projectInfo] = activeProjects[0];
+                    logger.info(`Using most recently active project: ${projectName}`, { path: projectInfo.projectPath });
+                    return projectInfo.projectPath;
+                }
+                
+                logger.warn('No active projects found in LSL registry, using current working directory');
+                return process.cwd();
+                
+            } catch (registryError) {
+                logger.warn('Could not read LSL registry, using current working directory', { error: registryError.message });
+                return process.cwd();
+            }
+            
+        } catch (error) {
+            logger.error('Failed to determine current project path', { error: error.message });
+            return process.cwd();
+        }
     }
 
     async handleGetStatus(req, res) {
@@ -103,12 +148,15 @@ class DashboardServer {
 
     async handleGetConstraints(req, res) {
         try {
+            // Get current project path for per-project constraints
+            const projectPath = this.getCurrentProjectPath(req);
+            
             // Check if grouped data is requested
             const includeGroups = req.query.grouped === 'true';
             
             if (includeGroups) {
-                // Return grouped constraints with metadata
-                const groupedData = this.config.getConstraintsWithGroups();
+                // Return grouped constraints with metadata (project-specific)
+                const groupedData = this.config.getProjectConstraintsWithGroups(projectPath);
                 const settings = this.config.getConstraintSettings();
                 
                 res.json({
@@ -118,7 +166,7 @@ class DashboardServer {
                             group: groupData.group,
                             constraints: groupData.constraints.map(constraint => ({
                                 id: constraint.id,
-                                group: constraint.group,
+                                groupId: constraint.group,
                                 pattern: constraint.pattern,
                                 message: constraint.message,
                                 severity: constraint.severity,
@@ -130,25 +178,29 @@ class DashboardServer {
                             total_constraints: groupedData.total_constraints,
                             total_groups: groupedData.total_groups,
                             enabled_constraints: groupedData.enabled_constraints,
-                            settings: settings
+                            settings: settings,
+                            project_path: projectPath
                         }
                     }
                 });
             } else {
-                // Return flat constraints list (legacy format)
-                const constraints = this.config.getConstraints();
+                // Return flat constraints list (legacy format, project-specific)
+                const constraints = this.config.getProjectConstraints(projectPath);
                 
                 res.json({
                     status: 'success',
                     data: constraints.map(constraint => ({
                         id: constraint.id,
-                        group: constraint.group,
+                        groupId: constraint.group,
                         pattern: constraint.pattern,
                         message: constraint.message,
                         severity: constraint.severity,
                         enabled: constraint.enabled !== false,
                         suggestion: constraint.suggestion || null
-                    }))
+                    })),
+                    meta: {
+                        project_path: projectPath
+                    }
                 });
             }
         } catch (error) {
@@ -385,70 +437,64 @@ class DashboardServer {
             const { id } = req.params;
             const { enabled } = req.body;
             
-            logger.info(`Toggling constraint ${id}`, { enabled });
+            // Get current project path for per-project constraint updates
+            const projectPath = this.getCurrentProjectPath(req);
             
-            // Update YAML file
-            const yamlPath = join(__dirname, '../constraints.yaml');
+            logger.info(`Toggling constraint ${id} for project`, { enabled, projectPath });
             
             try {
-                // Read current YAML configuration
-                const yamlContent = readFileSync(yamlPath, 'utf8');
-                const yamlData = parseYAML(yamlContent);
+                // Use ConfigManager's per-project update method
+                const success = this.config.updateProjectConstraint(projectPath, id, enabled);
                 
-                // Find and update the constraint
-                const constraintIndex = yamlData.constraints.findIndex(c => c.id === id);
-                
-                if (constraintIndex === -1) {
-                    throw new Error(`Constraint with id '${id}' not found in configuration`);
-                }
-                
-                // Update the enabled status
-                yamlData.constraints[constraintIndex].enabled = enabled;
-                
-                // Write back to YAML file with preserved formatting
-                const updatedYamlContent = stringifyYAML(yamlData, {
-                    indent: 2,
-                    lineWidth: 120,
-                    minContentWidth: 20,
-                    keepUndefined: false
-                });
-                
-                writeFileSync(yamlPath, updatedYamlContent, 'utf8');
-                
-                logger.info(`Successfully updated constraint ${id} in YAML file`, { 
-                    enabled,
-                    yamlPath
-                });
-                
-                // Signal configuration reload (if constraint engine supports it)
-                try {
-                    this.constraintEngine.reloadConfiguration?.();
-                } catch (reloadError) {
-                    logger.warn('Failed to reload constraint engine configuration', { 
-                        error: reloadError.message 
+                if (success) {
+                    logger.info(`Successfully updated constraint ${id} in project config`, { 
+                        enabled,
+                        projectPath
                     });
+                    
+                    // Signal configuration reload (if constraint engine supports it)
+                    try {
+                        this.constraintEngine.reloadConfiguration?.();
+                    } catch (reloadError) {
+                        logger.warn('Failed to reload constraint engine configuration', { 
+                            error: reloadError.message 
+                        });
+                    }
+                    
+                    res.json({
+                        status: 'success',
+                        message: `Constraint ${id} ${enabled ? 'enabled' : 'disabled'} and saved to project configuration`,
+                        data: { 
+                            id, 
+                            enabled, 
+                            persisted: true,
+                            project_path: projectPath,
+                            config_file: join(projectPath, '.constraint-monitor.yaml')
+                        }
+                    });
+                } else {
+                    throw new Error('Failed to update project constraint configuration');
                 }
                 
-                res.json({
-                    status: 'success',
-                    message: `Constraint ${id} ${enabled ? 'enabled' : 'disabled'} and saved to configuration`,
-                    data: { id, enabled, persisted: true }
-                });
-                
-            } catch (yamlError) {
-                logger.error('Failed to update YAML configuration', { 
-                    error: yamlError.message,
+            } catch (updateError) {
+                logger.error('Failed to update project constraint configuration', { 
+                    error: updateError.message,
                     constraintId: id,
-                    yamlPath
+                    projectPath
                 });
                 
-                // Still return success for the API request even if YAML update failed
+                // Still return success for the API request even if update failed
                 // This prevents UI from getting stuck in loading state
                 res.json({
                     status: 'success',
-                    message: `Constraint ${id} ${enabled ? 'enabled' : 'disabled'} (YAML update failed)`,
-                    data: { id, enabled, persisted: false },
-                    warning: `Failed to persist to YAML file: ${yamlError.message}`
+                    message: `Constraint ${id} ${enabled ? 'enabled' : 'disabled'} (project config update failed)`,
+                    data: { 
+                        id, 
+                        enabled, 
+                        persisted: false,
+                        project_path: projectPath
+                    },
+                    warning: `Failed to persist to project config file: ${updateError.message}`
                 });
             }
             
@@ -480,6 +526,68 @@ class DashboardServer {
             res.status(500).json({
                 status: 'error',
                 message: 'Failed to resolve violation',
+                error: error.message
+            });
+        }
+    }
+
+    async handleSelectProject(req, res) {
+        try {
+            const { projectName } = req.body;
+            
+            if (!projectName) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Project name is required'
+                });
+            }
+            
+            const lslRegistryPath = join(__dirname, '../../../.global-lsl-registry.json');
+            
+            try {
+                const registryData = JSON.parse(readFileSync(lslRegistryPath, 'utf8'));
+                
+                if (!registryData.projects[projectName]) {
+                    return res.status(404).json({
+                        status: 'error',
+                        message: `Project '${projectName}' not found in registry`
+                    });
+                }
+                
+                const projectInfo = registryData.projects[projectName];
+                
+                // Ensure project has its own constraint configuration
+                const projectConstraints = this.config.getProjectConstraints(projectInfo.projectPath);
+                
+                logger.info(`Selected project: ${projectName}`, { 
+                    path: projectInfo.projectPath,
+                    constraintsCount: projectConstraints.length
+                });
+                
+                res.json({
+                    status: 'success',
+                    message: `Switched to project: ${projectName}`,
+                    data: {
+                        projectName,
+                        projectPath: projectInfo.projectPath,
+                        constraintsConfigured: projectConstraints.length > 0
+                    }
+                });
+                
+            } catch (registryError) {
+                logger.error('Failed to read LSL registry', { error: registryError.message });
+                res.status(500).json({
+                    status: 'error',
+                    message: 'Failed to access project registry',
+                    error: registryError.message
+                });
+            }
+            
+        } catch (error) {
+            logger.error('Failed to select project', { error: error.message });
+            res.status(500).json({
+                status: 'error',
+                message: 'Failed to select project',
                 error: error.message
             });
         }
@@ -545,7 +653,7 @@ class DashboardServer {
 
 // CLI support
 if (import.meta.url === `file://${process.argv[1]}`) {
-    const port = parseInt(process.env.DASHBOARD_PORT) || 3001;
+    const port = parseInt(process.env.DASHBOARD_PORT) || 3031;
     const server = new DashboardServer(port);
     
     // Graceful shutdown

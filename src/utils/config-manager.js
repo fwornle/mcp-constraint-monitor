@@ -1,7 +1,7 @@
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { parse } from 'yaml';
+import { parse, stringify } from 'yaml';
 import { logger } from './logger.js';
 
 export class ConfigManager {
@@ -315,5 +315,171 @@ export class ConfigManager {
         sort_by_severity: true
       }
     };
+  }
+
+  // Per-project configuration methods
+  getProjectConstraints(projectPath) {
+    if (!projectPath) {
+      logger.warn('No project path provided, using global constraints');
+      return this.getConstraints();
+    }
+
+    // Look for project-specific configuration
+    const projectConfigPath = join(projectPath, '.constraint-monitor.yaml');
+    
+    if (existsSync(projectConfigPath)) {
+      try {
+        const content = readFileSync(projectConfigPath, 'utf8');
+        const data = parse(content);
+        logger.info(`Loaded project-specific constraints from ${projectConfigPath}`);
+        return data.constraints || [];
+      } catch (error) {
+        logger.error(`Failed to parse project constraints from ${projectConfigPath}`, { error: error.message });
+      }
+    }
+
+    // Fallback to global constraints but create project-specific copy
+    logger.info(`No project-specific constraints found for ${projectPath}, creating from global template`);
+    return this.createProjectConstraints(projectPath);
+  }
+
+  getProjectConstraintGroups(projectPath) {
+    if (!projectPath) {
+      return this.getConstraintGroups();
+    }
+
+    const projectConfigPath = join(projectPath, '.constraint-monitor.yaml');
+    
+    if (existsSync(projectConfigPath)) {
+      try {
+        const content = readFileSync(projectConfigPath, 'utf8');
+        const data = parse(content);
+        return data.constraint_groups || [];
+      } catch (error) {
+        logger.error(`Failed to parse project groups from ${projectConfigPath}`, { error: error.message });
+      }
+    }
+
+    // Return global groups (they're template-only and don't need per-project copies)
+    return this.getConstraintGroups();
+  }
+
+  getProjectConstraintsWithGroups(projectPath) {
+    const constraints = this.getProjectConstraints(projectPath);
+    const groups = this.getProjectConstraintGroups(projectPath);
+    
+    // Create group lookup
+    const groupMap = groups.reduce((acc, group) => {
+      acc[group.id] = group;
+      return acc;
+    }, {});
+    
+    // Group constraints by their group ID
+    const constraintsByGroup = constraints.reduce((acc, constraint) => {
+      const groupId = constraint.group || 'ungrouped';
+      if (!acc[groupId]) {
+        acc[groupId] = {
+          group: groupMap[groupId] || {
+            id: groupId,
+            name: groupId === 'ungrouped' ? 'Ungrouped Constraints' : groupId,
+            description: 'Constraints without specific group assignment',
+            icon: '📋',
+            color: '#9E9E9E'
+          },
+          constraints: []
+        };
+      }
+      acc[groupId].constraints.push(constraint);
+      return acc;
+    }, {});
+    
+    return {
+      groups: Object.values(constraintsByGroup),
+      total_constraints: constraints.length,
+      total_groups: Object.keys(constraintsByGroup).length,
+      enabled_constraints: constraints.filter(c => c.enabled).length
+    };
+  }
+
+  createProjectConstraints(projectPath) {
+    // Get global constraints as template
+    const globalConstraints = this.getConstraints();
+    const globalGroups = this.getConstraintGroups();
+    const globalSettings = this.getConstraintSettings();
+
+    // Create project-specific configuration
+    const projectConfig = {
+      constraint_groups: globalGroups,
+      constraints: globalConstraints,
+      settings: globalSettings
+    };
+
+    // Save to project-specific file
+    const projectConfigPath = join(projectPath, '.constraint-monitor.yaml');
+    
+    try {
+      const yamlContent = stringify(projectConfig, {
+        indent: 2,
+        lineWidth: 120,
+        minContentWidth: 20,
+        keepUndefined: false
+      });
+      
+      writeFileSync(projectConfigPath, yamlContent, 'utf8');
+      logger.info(`Created project-specific constraints at ${projectConfigPath}`);
+      
+      return globalConstraints;
+    } catch (error) {
+      logger.error(`Failed to create project constraints for ${projectPath}`, { error: error.message });
+      return globalConstraints;
+    }
+  }
+
+  updateProjectConstraint(projectPath, constraintId, enabled) {
+    if (!projectPath) {
+      logger.error('Cannot update constraint: no project path provided');
+      return false;
+    }
+
+    const projectConfigPath = join(projectPath, '.constraint-monitor.yaml');
+    
+    // Ensure project config exists
+    if (!existsSync(projectConfigPath)) {
+      this.createProjectConstraints(projectPath);
+    }
+
+    try {
+      // Read current configuration
+      const content = readFileSync(projectConfigPath, 'utf8');
+      const data = parse(content);
+      
+      // Find and update the constraint
+      const constraintIndex = data.constraints.findIndex(c => c.id === constraintId);
+      
+      if (constraintIndex === -1) {
+        logger.error(`Constraint ${constraintId} not found in project config ${projectConfigPath}`);
+        return false;
+      }
+      
+      // Update the enabled status
+      data.constraints[constraintIndex].enabled = enabled;
+      
+      // Write back to file
+      const updatedContent = stringify(data, {
+        indent: 2,
+        lineWidth: 120,
+        minContentWidth: 20,
+        keepUndefined: false
+      });
+      
+      writeFileSync(projectConfigPath, updatedContent, 'utf8');
+      
+      logger.info(`Updated constraint ${constraintId} to ${enabled ? 'enabled' : 'disabled'} in ${projectConfigPath}`);
+      return true;
+      
+    } catch (error) {
+      logger.error(`Failed to update constraint ${constraintId} in ${projectPath}`, { error: error.message });
+      return false;
+    }
   }
 }
