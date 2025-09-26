@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { parse } from 'yaml';
 import { logger } from './logger.js';
 
@@ -118,10 +119,12 @@ export class ConfigManager {
   }
 
   getConstraints() {
-    const constraintsPath = join(process.cwd(), 'constraints.yaml');
+    // Look for constraints.yaml relative to this module's directory
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+    const constraintsPath = join(__dirname, '../../constraints.yaml');
     
     if (!existsSync(constraintsPath)) {
-      logger.warn('constraints.yaml not found, using default constraints');
+      logger.warn(`constraints.yaml not found at ${constraintsPath}, using default constraints`);
       return this.getDefaultConstraints();
     }
     

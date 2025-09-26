@@ -34,23 +34,26 @@ class ConstraintDashboard {
             this.updateConnectionStatus(true);
             
             // Load data from real API endpoints
-            const [statusResponse, violationsResponse] = await Promise.all([
+            const [statusResponse, constraintsResponse, violationsResponse] = await Promise.all([
                 fetch(`${this.apiEndpoint}/status`).catch(() => ({ ok: false })),
+                fetch(`${this.apiEndpoint}/constraints`).catch(() => ({ ok: false })),
                 fetch(`${this.apiEndpoint}/violations`).catch(() => ({ ok: false }))
             ]);
             
             // Get real data if available, otherwise use mock data
-            if (statusResponse.ok && violationsResponse.ok) {
+            if (statusResponse.ok && constraintsResponse.ok && violationsResponse.ok) {
                 const statusData = await statusResponse.json();
+                const constraintsData = await constraintsResponse.json();
                 const violationsData = await violationsResponse.json();
                 
                 // Extract data from API response structure
                 const violations = violationsData.data || violationsData.violations || [];
                 const status = statusData.data || statusData;
+                const constraints = constraintsData.data || constraintsData.constraints || [];
                 
                 this.data = {
                     status: status,
-                    constraints: await this.getMockConstraints(), // Keep mock constraints for now
+                    constraints: constraints,
                     violations: violations,
                     activity: this.generateActivityFromViolations(violations)
                 };
