@@ -73,6 +73,7 @@ class DashboardServer {
         // Constraint management
         this.app.post('/api/constraints/:id/toggle', this.handleToggleConstraint.bind(this));
         this.app.post('/api/violations/:id/resolve', this.handleResolveViolation.bind(this));
+        this.app.post('/api/constraints/check', this.handleConstraintCheck.bind(this));
         
         // Error handling
         this.app.use(this.handleError.bind(this));
@@ -589,6 +590,97 @@ class DashboardServer {
                 status: 'error',
                 message: 'Failed to select project',
                 error: error.message
+            });
+        }
+    }
+
+    async handleConstraintCheck(req, res) {
+        try {
+            const { content, type, filePath, project } = req.body;
+            
+            if (!content || !type) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Content and type are required fields'
+                });
+            }
+            
+            // Get project path - use from request or detect current project
+            let projectPath;
+            if (project) {
+                // Use specified project
+                const lslRegistryPath = join(__dirname, '../../../.global-lsl-registry.json');
+                try {
+                    const registryData = JSON.parse(readFileSync(lslRegistryPath, 'utf8'));
+                    projectPath = registryData.projects[project]?.projectPath;
+                } catch (error) {
+                    logger.warn('Could not load project registry', { error: error.message });
+                }
+            }
+            
+            if (!projectPath) {
+                // Fallback to current project detection
+                projectPath = this.getCurrentProjectPath(req);
+            }
+            
+            // Use the constraint engine to check for violations
+            const checkResult = await this.constraintEngine.checkConstraints(content, {
+                type,
+                filePath: filePath || 'unknown',
+                projectPath: projectPath || process.cwd()
+            });
+            
+            // Calculate compliance score (higher is better, 0-10 scale)
+            const violations = checkResult.violations || [];
+            const totalViolations = violations.length;
+            const criticalViolations = violations.filter(v => v.severity === 'critical').length;
+            const errorViolations = violations.filter(v => v.severity === 'error').length;
+            
+            // Compliance scoring: start with 10, subtract points for violations
+            let compliance = 10;
+            compliance -= criticalViolations * 3;  // Critical violations cost 3 points each
+            compliance -= errorViolations * 2;     // Error violations cost 2 points each
+            compliance -= (totalViolations - criticalViolations - errorViolations) * 0.5; // Other violations cost 0.5 points
+            compliance = Math.max(0, Math.min(10, compliance)); // Clamp to 0-10 range
+            
+            logger.info('Constraint check completed', {
+                type,
+                projectPath,
+                violations: totalViolations,
+                compliance: compliance.toFixed(1)
+            });
+            
+            res.json({
+                status: 'success',
+                data: {
+                    violations,
+                    compliance: parseFloat(compliance.toFixed(1)),
+                    summary: {
+                        total: totalViolations,
+                        critical: criticalViolations,
+                        error: errorViolations,
+                        warning: violations.filter(v => v.severity === 'warning').length,
+                        info: violations.filter(v => v.severity === 'info').length
+                    },
+                    project: project || 'auto-detected',
+                    projectPath
+                }
+            });
+            
+        } catch (error) {
+            logger.error('Failed to check constraints', { 
+                error: error.message,
+                stack: error.stack
+            });
+            
+            res.status(500).json({
+                status: 'error',
+                message: 'Failed to check constraints',
+                error: error.message,
+                data: {
+                    violations: [],
+                    compliance: 10  // Fail open - assume compliant if check fails
+                }
             });
         }
     }
