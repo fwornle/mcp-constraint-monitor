@@ -9,8 +9,9 @@ import express from 'express';
 import { createServer } from 'http';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 import cors from 'cors';
+import { parse as parseYAML, stringify as stringifyYAML } from 'yaml';
 import { ConfigManager } from './utils/config-manager.js';
 import { StatusGenerator } from './status/status-generator.js';
 import { ConstraintEngine } from './engines/constraint-engine.js';
@@ -38,13 +39,13 @@ class DashboardServer {
         // Parse JSON bodies
         this.app.use(express.json());
         
-        // Serve static dashboard files
-        const dashboardPath = join(__dirname, '../dashboard');
-        this.app.use('/dashboard', express.static(dashboardPath));
-        
-        // Redirect root to dashboard
+        // Redirect to professional dashboard running on Next.js
         this.app.get('/', (req, res) => {
-            res.redirect('/dashboard');
+            res.redirect('http://localhost:3030');
+        });
+        
+        this.app.get('/dashboard', (req, res) => {
+            res.redirect('http://localhost:3030');
         });
 
         // Logging middleware
@@ -384,15 +385,73 @@ class DashboardServer {
             const { id } = req.params;
             const { enabled } = req.body;
             
-            // For now, just acknowledge the request
-            // In production, this would update the constraint configuration
             logger.info(`Toggling constraint ${id}`, { enabled });
             
-            res.json({
-                status: 'success',
-                message: `Constraint ${id} ${enabled ? 'enabled' : 'disabled'}`,
-                data: { id, enabled }
-            });
+            // Update YAML file
+            const yamlPath = join(__dirname, '../constraints.yaml');
+            
+            try {
+                // Read current YAML configuration
+                const yamlContent = readFileSync(yamlPath, 'utf8');
+                const yamlData = parseYAML(yamlContent);
+                
+                // Find and update the constraint
+                const constraintIndex = yamlData.constraints.findIndex(c => c.id === id);
+                
+                if (constraintIndex === -1) {
+                    throw new Error(`Constraint with id '${id}' not found in configuration`);
+                }
+                
+                // Update the enabled status
+                yamlData.constraints[constraintIndex].enabled = enabled;
+                
+                // Write back to YAML file with preserved formatting
+                const updatedYamlContent = stringifyYAML(yamlData, {
+                    indent: 2,
+                    lineWidth: 120,
+                    minContentWidth: 20,
+                    keepUndefined: false
+                });
+                
+                writeFileSync(yamlPath, updatedYamlContent, 'utf8');
+                
+                logger.info(`Successfully updated constraint ${id} in YAML file`, { 
+                    enabled,
+                    yamlPath
+                });
+                
+                // Signal configuration reload (if constraint engine supports it)
+                try {
+                    this.constraintEngine.reloadConfiguration?.();
+                } catch (reloadError) {
+                    logger.warn('Failed to reload constraint engine configuration', { 
+                        error: reloadError.message 
+                    });
+                }
+                
+                res.json({
+                    status: 'success',
+                    message: `Constraint ${id} ${enabled ? 'enabled' : 'disabled'} and saved to configuration`,
+                    data: { id, enabled, persisted: true }
+                });
+                
+            } catch (yamlError) {
+                logger.error('Failed to update YAML configuration', { 
+                    error: yamlError.message,
+                    constraintId: id,
+                    yamlPath
+                });
+                
+                // Still return success for the API request even if YAML update failed
+                // This prevents UI from getting stuck in loading state
+                res.json({
+                    status: 'success',
+                    message: `Constraint ${id} ${enabled ? 'enabled' : 'disabled'} (YAML update failed)`,
+                    data: { id, enabled, persisted: false },
+                    warning: `Failed to persist to YAML file: ${yamlError.message}`
+                });
+            }
+            
         } catch (error) {
             logger.error('Failed to toggle constraint', { error: error.message });
             res.status(500).json({

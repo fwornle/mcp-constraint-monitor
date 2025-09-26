@@ -9,7 +9,8 @@
   },
   "scripts": {
     "start": "node src/server.js",
-    "dashboard": "node src/dashboard-server.js",
+    "api": "node src/dashboard-server.js",
+    "dashboard": "cd dashboard-new && npm run dev",
     "setup": "node scripts/setup.js",
     "test": "node --test test/*.js",
     "demo": "node bin/demo",
@@ -55,7 +56,7 @@
   "files": [
     "src/",
     "bin/",
-    "dashboard/",
+    "dashboard-new/",
     "config/",
     "scripts/",
     "README.md",
