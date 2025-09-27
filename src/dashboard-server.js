@@ -26,7 +26,12 @@ class DashboardServer {
         this.server = null;
         this.config = new ConfigManager();
         this.statusGenerator = new StatusGenerator();
-        this.constraintEngine = new ConstraintEngine();
+        this.constraintEngine = new ConstraintEngine(this.config);
+        
+        // Initialize constraint engine
+        this.constraintEngine.initialize().catch(error => {
+            logger.error('Failed to initialize constraint engine:', error);
+        });
         
         this.setupMiddleware();
         this.setupRoutes();
@@ -624,7 +629,8 @@ class DashboardServer {
             }
             
             // Use the constraint engine to check for violations
-            const checkResult = await this.constraintEngine.checkConstraints(content, {
+            const checkResult = await this.constraintEngine.checkConstraints({
+                content,
                 type,
                 filePath: filePath || 'unknown',
                 projectPath: projectPath || process.cwd()

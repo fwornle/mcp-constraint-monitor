@@ -5,6 +5,7 @@ import { DuckDBAnalytics } from '../databases/duckdb-client.js';
 export class ConstraintEngine {
   constructor(config) {
     this.config = config;
+    this.configManager = null;
     this.constraints = new Map();
     this.violations = [];
     this.qdrant = null;
@@ -13,8 +14,14 @@ export class ConstraintEngine {
 
   async initialize() {
     try {
-      // Load default constraints
-      await this.loadDefaultConstraints();
+      // Import ConfigManager if not provided in constructor
+      if (!this.configManager) {
+        const { ConfigManager } = await import('../utils/config-manager.js');
+        this.configManager = new ConfigManager();
+      }
+      
+      // Load constraints from YAML configuration
+      await this.loadConstraintsFromConfig();
       
       // Initialize databases if available
       try {
@@ -33,40 +40,50 @@ export class ConstraintEngine {
         logger.warn('Analytics database not available:', error.message);
       }
 
-      logger.info('Constraint Engine initialized');
+      logger.info('Constraint Engine initialized with', this.constraints.size, 'constraints');
     } catch (error) {
       logger.error('Failed to initialize Constraint Engine:', error);
       throw error;
     }
   }
 
-  async loadDefaultConstraints() {
-    const defaultConstraints = [
-      {
-        id: 'no-console-log',
-        pattern: 'console\\.log',
-        message: 'Use Logger.log() instead of console.log',
-        severity: 'warning',
-        enabled: true
-      },
-      {
-        id: 'no-var-declarations',
-        pattern: '\\bvar\\s+',
-        message: 'Use let or const instead of var',
-        severity: 'warning',
-        enabled: true
-      },
-      {
-        id: 'proper-error-handling',
-        pattern: 'catch\\s*\\(\\s*\\w+\\s*\\)\\s*\\{\\s*\\}',
-        message: 'Empty catch blocks should be avoided',
-        severity: 'error',
-        enabled: true
+  async loadConstraintsFromConfig() {
+    // Load constraints from YAML configuration via ConfigManager
+    const constraints = this.configManager.getConstraints();
+    
+    logger.info(`Loading ${constraints.length} constraints from configuration`);
+    
+    for (const constraint of constraints) {
+      // Validate constraint structure
+      if (!constraint.id || !constraint.pattern || !constraint.message) {
+        logger.warn('Invalid constraint definition:', constraint);
+        continue;
       }
-    ];
-
-    for (const constraint of defaultConstraints) {
+      
+      // Set defaults for missing properties
+      constraint.severity = constraint.severity || 'warning';
+      constraint.enabled = constraint.enabled !== false; // Default to true
+      constraint.suggestion = constraint.suggestion || '';
+      
+      // Store in constraints map
       this.constraints.set(constraint.id, constraint);
+      
+      logger.debug(`Loaded constraint: ${constraint.id} (${constraint.severity}) - ${constraint.message}`);
+    }
+    
+    const enabledCount = Array.from(this.constraints.values()).filter(c => c.enabled).length;
+    logger.info(`Constraint loading complete: ${this.constraints.size} total, ${enabledCount} enabled`);
+  }
+
+  async reloadConfiguration() {
+    try {
+      logger.info('Reloading constraint configuration');
+      this.constraints.clear();
+      await this.loadConstraintsFromConfig();
+      logger.info('Constraint configuration reloaded successfully');
+    } catch (error) {
+      logger.error('Failed to reload constraint configuration:', error);
+      throw error;
     }
   }
 

@@ -53,14 +53,14 @@ constraints:
     suggestion: Add proper error handling or at minimum log the error
   - id: proper-function-naming
     group: code_quality
-    pattern: function\s+[a-z]
+    pattern: function\\s+[a-z]
     message: Function names should start with a verb (camelCase)
     severity: info
     enabled: true
     suggestion: "Use descriptive verb-based names: getUserData(), processResults()"
   - id: no-magic-numbers
     group: code_quality
-    pattern: \b\d{2,}\b(?!\s*(px|%|em|rem|vh|vw))
+    pattern: \\b\\d{2,}\\b(?!\\s*(px|%|em|rem|vh|vw))
     message: Magic numbers detected - consider using named constants
     severity: info
     enabled: true
@@ -74,7 +74,7 @@ constraints:
     suggestion: Use environment variables or secure key management
   - id: no-eval-usage
     group: security
-    pattern: \beval\s*\(
+    pattern: \\beval\\s*\\(
     message: eval() usage detected - security risk
     severity: critical
     enabled: true
