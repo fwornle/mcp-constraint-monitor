@@ -274,12 +274,10 @@ process.on('SIGTERM', async () => {
 });
 
 // Start server
-if (import.meta.url === `file://${process.argv[1]}`) {
-  const server = new ConstraintMonitorServer();
-  server.run().catch((error) => {
-    logger.error('Failed to start server:', error);
-    process.exit(1);
-  });
-}
+const server = new ConstraintMonitorServer();
+server.run().catch((error) => {
+  logger.error('Failed to start server:', error);
+  process.exit(1);
+});
 
 export { ConstraintMonitorServer };
