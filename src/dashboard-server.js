@@ -19,9 +19,48 @@ import { logger } from './utils/logger.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+/**
+ * Load port configuration from centralized .env.ports file
+ */
+function loadPortConfiguration() {
+    const portsFilePath = join(__dirname, '../../../.env.ports');
+    const config = {
+        dashboardPort: 3030,
+        apiPort: 3031
+    };
+    
+    try {
+        const portsFileContent = readFileSync(portsFilePath, 'utf8');
+        const lines = portsFileContent.split('\n');
+        
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('CONSTRAINT_DASHBOARD_PORT=')) {
+                config.dashboardPort = parseInt(trimmed.split('=')[1]) || 3030;
+            } else if (trimmed.startsWith('CONSTRAINT_API_PORT=')) {
+                config.apiPort = parseInt(trimmed.split('=')[1]) || 3031;
+            }
+        }
+        
+        logger.info('Loaded port configuration from .env.ports', config);
+        return config;
+    } catch (error) {
+        logger.warn('Could not load centralized port configuration, using defaults', { 
+            error: error.message,
+            portsFile: portsFilePath,
+            defaultConfig: config
+        });
+        return config;
+    }
+}
+
 class DashboardServer {
-    constructor(port = 3031) {
-        this.port = port;
+    constructor(port = null) {
+        // Load port configuration from centralized .env.ports file
+        const portConfig = loadPortConfiguration();
+        this.port = port || portConfig.apiPort;
+        this.dashboardPort = portConfig.dashboardPort;
+        
         this.app = express();
         this.server = null;
         this.config = new ConfigManager();
@@ -46,11 +85,11 @@ class DashboardServer {
         
         // Redirect to professional dashboard running on Next.js
         this.app.get('/', (req, res) => {
-            res.redirect('http://localhost:3030');
+            res.redirect(`http://localhost:${this.dashboardPort}`);
         });
         
         this.app.get('/dashboard', (req, res) => {
-            res.redirect('http://localhost:3030');
+            res.redirect(`http://localhost:${this.dashboardPort}`);
         });
 
         // Logging middleware
@@ -717,7 +756,7 @@ class DashboardServer {
                 } else {
                     logger.info('Dashboard server started', { 
                         port: this.port,
-                        dashboardUrl: `http://localhost:${this.port}/dashboard`,
+                        dashboardUrl: `http://localhost:${this.dashboardPort}`,
                         apiUrl: `http://localhost:${this.port}/api`
                     });
                     resolve();
@@ -742,7 +781,7 @@ class DashboardServer {
     getServerInfo() {
         return {
             port: this.port,
-            dashboardUrl: `http://localhost:${this.port}/dashboard`,
+            dashboardUrl: `http://localhost:${this.dashboardPort}`,
             apiUrl: `http://localhost:${this.port}/api`,
             running: this.server && this.server.listening
         };
@@ -751,7 +790,9 @@ class DashboardServer {
 
 // CLI support
 if (import.meta.url === `file://${process.argv[1]}`) {
-    const port = parseInt(process.env.DASHBOARD_PORT) || 3031;
+    // Use centralized port configuration for CLI startup
+    const portConfig = loadPortConfiguration();
+    const port = parseInt(process.env.DASHBOARD_PORT) || portConfig.apiPort;
     const server = new DashboardServer(port);
     
     // Graceful shutdown

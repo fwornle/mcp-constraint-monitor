@@ -1,5 +1,22 @@
 "use client"
 
+/**
+ * Constraint Dashboard Component
+ * 
+ * Health Monitoring System:
+ * - Dashboard (port 3030): Next.js frontend serving this React component
+ * - API Server (port 3031): Express.js backend providing data endpoints
+ * 
+ * Health Check Endpoints:
+ * - Frontend health: HTTP GET http://localhost:3030/ (returns 200 if healthy)
+ * - Backend health: HTTP GET http://localhost:3031/api/health (returns health status)
+ * 
+ * Inter-service Communication:
+ * - All API calls use CONFIG.API_BASE_URL (configurable port from .env.ports)
+ * - Automatic failover to defaults if centralized config unavailable
+ * - Health monitoring ensures both services are operational for full functionality
+ */
+
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -13,6 +30,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { ChevronDown, ChevronUp, AlertTriangle, CheckCircle, Settings, Folder, Clock, Zap, Power, PowerOff, TrendingUp, Activity } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { isAfter, subHours, subDays, format, parseISO } from 'date-fns'
+import CONFIG from '@/lib/config'
 
 interface Constraint {
   id: string
@@ -115,7 +133,7 @@ export function ConstraintDashboard() {
   const fetchConstraintData = async () => {
     try {
       setLoading(true)
-      const response = await fetch(`http://localhost:3031/api/constraints?grouped=true&project=${selectedProject}`)
+      const response = await fetch(`${CONFIG.API_BASE_URL}/api/constraints?grouped=true&project=${selectedProject}`)
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
@@ -145,7 +163,7 @@ export function ConstraintDashboard() {
   const fetchViolationsData = async () => {
     try {
       setViolationsLoading(true)
-      const response = await fetch(`http://localhost:3031/api/violations?project=${selectedProject}`)
+      const response = await fetch(`${CONFIG.API_BASE_URL}/api/violations?project=${selectedProject}`)
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
@@ -172,7 +190,7 @@ export function ConstraintDashboard() {
     try {
       setTogglingConstraints(prev => new Set(prev).add(constraintId))
       
-      const response = await fetch(`http://localhost:3031/api/constraints/${constraintId}/toggle?project=${selectedProject}`, {
+      const response = await fetch(`${CONFIG.API_BASE_URL}/api/constraints/${constraintId}/toggle?project=${selectedProject}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -229,7 +247,7 @@ export function ConstraintDashboard() {
       
       // Toggle all constraints in the group with project parameter
       const togglePromises = groupConstraints.map(constraint =>
-        fetch(`http://localhost:3031/api/constraints/${constraint.id}/toggle?project=${selectedProject}`, {
+        fetch(`${CONFIG.API_BASE_URL}/api/constraints/${constraint.id}/toggle?project=${selectedProject}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -281,7 +299,7 @@ export function ConstraintDashboard() {
 
   const fetchProjects = async () => {
     try {
-      const response = await fetch('http://localhost:3031/api/projects')
+      const response = await fetch(`${CONFIG.API_BASE_URL}/api/projects`)
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
@@ -411,34 +429,122 @@ export function ConstraintDashboard() {
 
   // Generate chart data for violations timeline
   const getViolationsChartData = () => {
-    if (!violations.length) return []
-    
     const now = new Date()
-    const data = []
+    const sevenDaysAgo = subDays(now, 7)
     
-    // Generate data points for last 7 days (6-hour intervals for better readability)
-    for (let i = 7 * 4; i >= 0; i--) {
-      const timePoint = subHours(now, i * 6)
-      const intervalStart = subHours(timePoint, 6)
-      
-      const violationsInInterval = violations.filter(v => {
-        try {
-          const violationTime = parseISO(v.timestamp)
-          return violationTime >= intervalStart && violationTime < timePoint
-        } catch {
-          return false
-        }
-      }).length
-      
-      data.push({
-        time: format(timePoint, 'MMM dd'),
-        fullTime: format(timePoint, 'MMM dd HH:mm'),
-        violations: violationsInInterval,
-        timestamp: timePoint.getTime()
+    // Always create regular daily intervals for consistent axis markings
+    const dailyIntervals = []
+    for (let i = 0; i <= 7; i++) {
+      const intervalTime = new Date(sevenDaysAgo.getTime() + (i * 24 * 60 * 60 * 1000))
+      dailyIntervals.push({
+        time: format(intervalTime, 'MMM dd'),
+        fullTime: format(intervalTime, 'MMM dd HH:mm'),
+        violations: 0,
+        timestamp: intervalTime.getTime()
       })
     }
     
-    return data
+    if (!violations.length) {
+      return dailyIntervals
+    }
+    
+    // Filter violations to last 7 days and sort by timestamp
+    const recentViolations = violations
+      .filter(v => {
+        try {
+          const violationTime = parseISO(v.timestamp)
+          return isAfter(violationTime, sevenDaysAgo)
+        } catch {
+          return false
+        }
+      })
+      .sort((a, b) => {
+        try {
+          return parseISO(a.timestamp).getTime() - parseISO(b.timestamp).getTime()
+        } catch {
+          return 0
+        }
+      })
+    
+    if (!recentViolations.length) {
+      return dailyIntervals
+    }
+    
+    // Group violations by hour to create meaningful data points
+    const violationsByHour = new Map()
+    
+    recentViolations.forEach(violation => {
+      try {
+        const violationTime = parseISO(violation.timestamp)
+        // Round down to the hour for grouping
+        const hourKey = new Date(violationTime.getFullYear(), violationTime.getMonth(), violationTime.getDate(), violationTime.getHours()).getTime()
+        
+        if (!violationsByHour.has(hourKey)) {
+          violationsByHour.set(hourKey, {
+            time: new Date(hourKey),
+            count: 0
+          })
+        }
+        violationsByHour.get(hourKey).count++
+      } catch {
+        // Skip invalid timestamps
+      }
+    })
+    
+    // Convert to sorted array and create cumulative data
+    const sortedHours = Array.from(violationsByHour.entries())
+      .sort(([a], [b]) => a - b)
+    
+    let cumulativeCount = 0
+    const violationDataPoints = []
+    
+    sortedHours.forEach(([hourTimestamp, hourData]) => {
+      cumulativeCount += hourData.count
+      violationDataPoints.push({
+        time: format(hourData.time, 'MMM dd'),
+        fullTime: format(hourData.time, 'MMM dd HH:mm'),
+        violations: cumulativeCount,
+        timestamp: hourData.time.getTime()
+      })
+    })
+    
+    // Merge daily intervals with violation data points
+    const mergedData = [...dailyIntervals]
+    
+    violationDataPoints.forEach(violationPoint => {
+      // Find the closest daily interval and update it if violation occurred on that day
+      const dayStart = new Date(violationPoint.timestamp)
+      dayStart.setHours(0, 0, 0, 0)
+      
+      const existingIndex = mergedData.findIndex(point => {
+        const pointDayStart = new Date(point.timestamp)
+        pointDayStart.setHours(0, 0, 0, 0)
+        return pointDayStart.getTime() === dayStart.getTime()
+      })
+      
+      if (existingIndex !== -1) {
+        // Update the daily interval with the actual violation data
+        mergedData[existingIndex] = violationPoint
+      } else {
+        // Add the violation point if no daily interval exists
+        mergedData.push(violationPoint)
+      }
+    })
+    
+    // Sort by timestamp and ensure cumulative values are consistent
+    mergedData.sort((a, b) => a.timestamp - b.timestamp)
+    
+    // Forward-fill cumulative counts for days without violations
+    let lastViolationCount = 0
+    mergedData.forEach(point => {
+      if (point.violations > 0) {
+        lastViolationCount = point.violations
+      } else {
+        point.violations = lastViolationCount
+      }
+    })
+    
+    return mergedData
   }
 
   // Get accurate statistics
@@ -507,7 +613,7 @@ export function ConstraintDashboard() {
               )}
             </h1>
             <p className="text-sm text-muted-foreground">
-              Real-time constraint monitoring and compliance tracking
+              Real-time constraint monitoring and compliance tracking with health monitoring ensuring dashboard (port 3030) and API server (port 3031) operations
               {selectedProject && selectedProject !== 'current' && (
                 <span className="ml-2">
                   • Monitoring <span className="font-bold text-primary">{selectedProject}</span>
@@ -642,7 +748,7 @@ export function ConstraintDashboard() {
                   <XAxis 
                     dataKey="time" 
                     tick={{ fontSize: 10 }}
-                    interval={Math.max(Math.floor(chartData.length / 6), 1)}
+                    interval={0}
                     angle={-45}
                     textAnchor="end"
                     height={40}
@@ -671,216 +777,186 @@ export function ConstraintDashboard() {
           </CardContent>
         </Card>
 
-        {/* Project Switch Notification */}
-        {selectedProject && selectedProject !== currentProject && (
-          <Alert className="border-blue-200 bg-blue-50">
-            <AlertTriangle className="h-4 w-4 text-blue-600" />
-            <AlertTitle className="text-blue-800">Monitoring Remote Project</AlertTitle>
-            <AlertDescription className="text-blue-700">
-              You are now viewing constraints for the <strong>{selectedProject}</strong> project.
-              {currentProject && (
-                <span> Your current project is <strong>{currentProject}</strong>.</span>
-              )}
-            </AlertDescription>
-          </Alert>
-        )}
-
-
-        {/* Compact Constraint Groups */}
-        {data && (
-          <Card className="p-3">
-            <CardHeader className="p-0 pb-2">
-              <CardTitle className="text-base">Constraint Groups</CardTitle>
-              <CardDescription className="text-xs">Organized constraint monitoring by category</CardDescription>
-            </CardHeader>
-            <CardContent className="p-0">
-              <Accordion type="multiple" value={expandedGroups} className="w-full">
-                {data.groups && data.groups.map((group) => {
-                  const stats = getGroupStats(group.id)
-                  const groupConstraints = data.constraints?.filter(c => c.groupId === group.id) || []
-                  
-                  return (
-                    <AccordionItem key={group.id} value={group.id} className="border-b last:border-b-0">
-                      <AccordionTrigger 
-                        className="hover:no-underline py-2 text-sm"
-                        onClick={(e) => {
-                          const target = e.target as HTMLElement
-                          if (!target.closest('.group-toggle-btn')) {
-                            toggleAccordionGroup(group.id)
-                          }
-                        }}
-                      >
-                        <div className="flex items-center justify-between w-full mr-2">
-                          <div className="flex items-center gap-2">
-                            <div 
-                              className={`w-2 h-2 rounded-full`}
-                              style={{ backgroundColor: group.color }}
-                            />
-                            <div className="text-left">
-                              <div className="font-medium text-sm">{group.name}</div>
-                              <div className="text-xs text-muted-foreground">{group.description}</div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Badge variant="secondary" className="text-xs px-1 py-0">{stats.total}</Badge>
-                            <Badge variant="secondary" className="text-xs px-1 py-0">{stats.enabled} on</Badge>
-                            {stats.violations > 0 && (
-                              <Badge variant="destructive" className="text-xs px-1 py-0">{stats.violations}</Badge>
-                            )}
-                            
-                            <div
-                              className={`group-toggle-btn inline-flex items-center justify-center rounded-md text-xs font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-6 px-2 cursor-pointer ${
-                                togglingGroups.has(group.id) ? 'opacity-50 cursor-not-allowed' : ''
-                              }`}
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                if (!togglingGroups.has(group.id)) {
-                                  const groupConstraints = data?.constraints?.filter(c => c.groupId === group.id) || []
-                                  const allEnabled = groupConstraints.every(c => c.enabled)
-                                  toggleConstraintGroup(group.id, !allEnabled)
-                                }
-                              }}
-                            >
-                              {togglingGroups.has(group.id) ? (
-                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current" />
-                              ) : (
-                                (() => {
-                                  const allEnabled = groupConstraints.every(c => c.enabled)
-                                  return allEnabled ? (
-                                    <PowerOff className="h-3 w-3" />
-                                  ) : (
-                                    <Power className="h-3 w-3" />
-                                  )
-                                })()
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </AccordionTrigger>
-                      <AccordionContent className="pt-1 pb-2">
-                        <div className="space-y-1 ml-4">
-                          {groupConstraints.map((constraint) => {
-                            const violationCount = getRecentViolations(24).filter(
-                              v => v.constraint_id === constraint.id
-                            ).length
-                            
-                            const isToggling = togglingConstraints.has(constraint.id)
-                            
-                            return (
-                              <div 
-                                key={constraint.id} 
-                                className="flex items-center justify-between p-2 rounded hover:bg-muted/50 cursor-pointer transition-colors"
-                                onClick={() => !isToggling && toggleConstraint(constraint.id, constraint.enabled)}
-                              >
-                                <div className="flex items-center gap-2 flex-1 min-w-0">
-                                  {isToggling ? (
-                                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary flex-shrink-0" />
-                                  ) : constraint.enabled ? (
-                                    <CheckCircle className="h-3 w-3 text-green-500 flex-shrink-0" />
-                                  ) : (
-                                    <div className="h-3 w-3 rounded-full bg-gray-300 border-2 border-gray-400 flex-shrink-0" />
-                                  )}
-                                  <div className="flex-1 min-w-0">
-                                    <div className="text-xs font-medium truncate" title={constraint.message}>
-                                      {constraint.message}
-                                    </div>
-                                    <div className="text-xs text-muted-foreground font-mono truncate" title={constraint.pattern}>
-                                      {constraint.pattern}
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-1 flex-shrink-0">
-                                  <Badge 
-                                    variant="secondary"
-                                    className={`${getSeverityColor(constraint.severity)} text-white text-xs px-1 py-0`}
-                                  >
-                                    {constraint.severity}
-                                  </Badge>
-                                  {violationCount > 0 ? (
-                                    <Badge variant="destructive" className="text-xs px-1 py-0">{violationCount}</Badge>
-                                  ) : (
-                                    <Badge variant="secondary" className="text-xs px-1 py-0">0</Badge>
-                                  )}
-                                </div>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  )
-                })}
-              </Accordion>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Compact Violation History - Moved to Bottom */}
-        <Card className="p-3">
-          <CardHeader className="p-0 pb-2">
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Activity className="h-4 w-4" />
-                  Recent Violations History
-                </CardTitle>
-                <CardDescription className="text-xs">Latest constraint violations and their details</CardDescription>
-              </div>
-              {violationsLoading && (
-                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary"></div>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            {violations && violations.length > 0 ? (
-              <div className="space-y-2 max-h-60 overflow-y-auto">
-                {violations
-                  .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-                  .slice(0, 10)
-                  .map((violation) => (
-                    <div key={violation.id} className="flex items-center gap-2 p-2 rounded border hover:bg-muted/50">
-                      <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${getSeverityColor(violation.severity)}`}></div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1 mb-1">
-                          <Badge 
-                            variant="outline" 
-                            className={`${getSeverityColor(violation.severity)} text-white text-xs px-1 py-0`}
-                          >
-                            {violation.severity}
-                          </Badge>
-                          {violation.tool && (
-                            <Badge variant="secondary" className="text-xs px-1 py-0">
-                              {violation.tool}
-                            </Badge>
-                          )}
-                          <span className="text-xs text-muted-foreground ml-auto flex-shrink-0">
-                            {formatTimeAgo(violation.timestamp)}
-                          </span>
-                        </div>
-                        <p className="text-xs font-medium text-foreground truncate" title={violation.message}>
-                          {violation.message}
-                        </p>
-                        {violation.context && (
-                          <p className="text-xs text-muted-foreground font-mono bg-muted px-1 rounded truncate mt-1" title={violation.context}>
-                            {violation.context}
-                          </p>
-                        )}
+        {/* Constraint Groups */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">Constraint Groups</h2>
+            <p className="text-xs text-muted-foreground">
+              Organized constraint monitoring by category
+            </p>
+          </div>
+          
+          {data?.groups?.map((group) => {
+            const groupStats = getGroupStats(group.id)
+            const groupConstraints = data.constraints?.filter(c => c.groupId === group.id) || []
+            const isExpanded = expandedGroups.includes(group.id)
+            
+            return (
+              <Card key={group.id} className="overflow-hidden">
+                <div 
+                  className="p-3 cursor-pointer hover:bg-muted/50 border-b border-border/50"
+                  onClick={() => toggleAccordionGroup(group.id)}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-3 h-3 rounded-full ${group.color || 'bg-blue-500'}`} />
+                      <div>
+                        <h3 className="font-medium text-sm">{group.name}</h3>
+                        <p className="text-xs text-muted-foreground">{group.description}</p>
                       </div>
                     </div>
-                  ))}
-                {violations.length > 10 && (
-                  <div className="text-center py-1">
-                    <p className="text-xs text-muted-foreground">
-                      Showing 10 of {violations.length} violations
-                    </p>
+                    
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2 text-xs">
+                        <Badge variant="outline" className="text-xs px-1 py-0">
+                          {groupStats.enabled}
+                        </Badge>
+                        <span className="text-muted-foreground">of</span>
+                        <Badge variant="outline" className="text-xs px-1 py-0">
+                          {groupStats.total}
+                        </Badge>
+                        <span className="text-muted-foreground">on</span>
+                        
+                        {togglingGroups.has(group.id) ? (
+                          <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary" />
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-xs"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              toggleConstraintGroup(group.id, groupStats.enabled < groupStats.total)
+                            }}
+                          >
+                            <Power className="h-3 w-3 mr-1" />
+                            {groupStats.enabled < groupStats.total ? 'Enable All' : 'Disable All'}
+                          </Button>
+                        )}
+                      </div>
+                      
+                      {isExpanded ? (
+                        <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </div>
+                  </div>
+                </div>
+                
+                {isExpanded && (
+                  <div className="p-3 space-y-2 bg-muted/20">
+                    {groupConstraints.map((constraint) => (
+                      <div key={constraint.id} className="flex items-center justify-between p-2 bg-background rounded border">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <div className={`w-2 h-2 rounded-full ${getSeverityColor(constraint.severity)}`} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <code className="text-xs bg-muted px-1 py-0.5 rounded font-mono">
+                                {constraint.pattern}
+                              </code>
+                              <Badge variant="outline" className="text-xs px-1 py-0">
+                                {constraint.severity}
+                              </Badge>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1 truncate">
+                              {constraint.message}
+                            </p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {togglingConstraints.has(constraint.id) ? (
+                            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary" />
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className={`h-6 w-12 text-xs ${constraint.enabled ? 'text-green-600' : 'text-gray-400'}`}
+                              onClick={() => toggleConstraint(constraint.id, constraint.enabled)}
+                            >
+                              {constraint.enabled ? (
+                                <>
+                                  <Power className="h-3 w-3 mr-1" />
+                                  On
+                                </>
+                              ) : (
+                                <>
+                                  <PowerOff className="h-3 w-3 mr-1" />
+                                  Off
+                                </>
+                              )}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            )
+          })}
+        </div>
+
+        {/* Recent Violations Log */}
+        <Card className="p-3">
+          <CardHeader className="p-0 pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Activity className="h-4 w-4" />
+              Recent Violations
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Latest constraint violations across all monitored projects
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            {violationsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                <span className="ml-2 text-sm text-muted-foreground">Loading violations...</span>
+              </div>
+            ) : violations.length > 0 ? (
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {violations.slice(0, 20).map((violation) => (
+                  <div key={violation.id} className="flex items-start gap-3 p-2 bg-muted/20 rounded border text-xs">
+                    <div className={`w-2 h-2 rounded-full mt-1 ${getSeverityColor(violation.severity)}`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Badge variant="outline" className="text-xs px-1 py-0">
+                          {violation.severity}
+                        </Badge>
+                        <code className="text-xs bg-background px-1 py-0.5 rounded font-mono">
+                          {violation.constraint_id}
+                        </code>
+                        <span className="text-muted-foreground">•</span>
+                        <span className="text-muted-foreground">{formatTimeAgo(violation.timestamp)}</span>
+                      </div>
+                      <p className="text-muted-foreground leading-relaxed">
+                        {violation.message}
+                      </p>
+                      {violation.context && (
+                        <p className="text-muted-foreground/60 mt-1">
+                          Context: {violation.context}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {violations.length > 20 && (
+                  <div className="text-center py-2">
+                    <span className="text-xs text-muted-foreground">
+                      Showing 20 of {violations.length} violations
+                    </span>
                   </div>
                 )}
               </div>
             ) : (
-              <div className="text-center py-4">
-                <CheckCircle className="h-8 w-8 text-green-500 mx-auto mb-2" />
-                <p className="text-sm font-medium">No Recent Violations</p>
-                <p className="text-xs text-muted-foreground">All constraints are being respected</p>
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <CheckCircle className="h-8 w-8 text-green-500 mb-2" />
+                <p className="text-sm font-medium">No Violations Found</p>
+                <p className="text-xs text-muted-foreground">
+                  All constraints are currently being followed
+                </p>
               </div>
             )}
           </CardContent>
