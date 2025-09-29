@@ -29,7 +29,7 @@ import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Switch } from '@/components/ui/switch'
 import { ChevronDown, ChevronUp, ChevronRight, AlertTriangle, CheckCircle, Settings, Folder, Clock, Zap, Power, PowerOff, TrendingUp, Activity, Users, Plus } from 'lucide-react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { isAfter, subHours, subDays, format, parseISO } from 'date-fns'
 import CONFIG from '@/lib/config'
 
@@ -91,6 +91,7 @@ interface ChartDataPoint {
   intervalTime: string
   actualTime: Date
   violationId?: string // Optional field for tracking individual violations
+  isCurrentInterval?: boolean // Flag to highlight current time bin
 }
 
 export default function ConstraintDashboard() {
@@ -589,13 +590,26 @@ export default function ConstraintDashboard() {
       const showDate = hour >= 22 || hour <= 2
       const displayLabel = showDate ? `(${dateLabel}) ${timeLabel}` : timeLabel
       
+      // Check if current time falls within this interval
+      const isCurrentInterval = now >= intervalTime && now < intervalEnd
+      
+      if (i === 0 || i === 17 || isCurrentInterval) {
+        console.log(`[DEBUG] Interval ${i} (${timeLabel}):`, {
+          intervalTime: intervalTime.toISOString(),
+          intervalEnd: intervalEnd.toISOString(),
+          now: now.toISOString(),
+          isCurrentInterval
+        })
+      }
+      
       intervals.push({
         time: displayLabel,
         fullTime: format(intervalTime, 'MMM dd HH:mm') + ' - ' + format(intervalEnd, 'HH:mm'), 
         violations: 0, // Will be populated below
         timestamp: intervalTime.getTime(),
         intervalTime: intervalTime.toISOString(),
-        actualTime: intervalTime
+        actualTime: intervalTime,
+        isCurrentInterval
       })
     }
     
@@ -645,6 +659,11 @@ export default function ConstraintDashboard() {
     intervals.forEach((interval, idx) => {
       if (interval.violations > 0) {
         console.log('[DEBUG] Interval', idx, ':', interval.fullTime, '- violations:', interval.violations)
+      }
+      // Force current interval to have minimal height for visibility
+      if (interval.isCurrentInterval && interval.violations === 0) {
+        console.log('[DEBUG] Current interval has no violations, adding minimal height for visibility')
+        interval.violations = 0.1; // Minimal height to show blue bar
       }
     })
     
@@ -865,11 +884,34 @@ export default function ConstraintDashboard() {
                   />
                   <Bar 
                     dataKey="violations" 
-                    fill="#ef4444"
-                    stroke="#dc2626"
                     strokeWidth={1}
                     radius={[2, 2, 0, 0]}
-                  />
+                  >
+                    {chartData.map((entry, index) => {
+                      // Determine bar color based on current interval and violations
+                      let fillColor = "#e5e7eb"; // Default gray for no violations
+                      let strokeColor = "#d1d5db";
+                      
+                      if (entry.isCurrentInterval) {
+                        // Current interval - highlight with blue
+                        fillColor = "#3b82f6"; // Blue
+                        strokeColor = "#2563eb";
+                        console.log(`[DEBUG] Bar ${index} (${entry.time}) is CURRENT INTERVAL - applying blue color`)
+                      } else if (entry.violations > 0) {
+                        // Has violations - show in red
+                        fillColor = "#ef4444"; // Red
+                        strokeColor = "#dc2626";
+                      }
+                      
+                      return (
+                        <Cell 
+                          key={`cell-${index}`} 
+                          fill={fillColor}
+                          stroke={strokeColor}
+                        />
+                      );
+                    })}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
