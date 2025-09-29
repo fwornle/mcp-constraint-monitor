@@ -42,7 +42,7 @@ constraints:
     pattern: \bvar\s+
     message: Use 'let' or 'const' instead of 'var'
     severity: warning
-    enabled: false
+    enabled: true
     suggestion: Use 'let' for mutable variables, 'const' for immutable
   - id: proper-error-handling
     group: code_quality
@@ -74,7 +74,7 @@ constraints:
     suggestion: Use environment variables or secure key management
   - id: no-eval-usage
     group: security
-    pattern: \\beval\\s*\\\\(
+    pattern: \beval\s*\(
     message: eval() usage detected - security risk
     severity: critical
     enabled: true

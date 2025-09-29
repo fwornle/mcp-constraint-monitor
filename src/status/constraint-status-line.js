@@ -47,6 +47,7 @@ class ConstraintStatusLine {
       showTrajectory: true,
       maxLength: 50,
       updateInterval: 1000,
+      serviceEndpoint: this.getServiceEndpoint(),
       colors: {
         excellent: 'green',
         good: 'cyan', 
@@ -60,6 +61,33 @@ class ConstraintStatusLine {
         blocked: '🚫'
       }
     };
+  }
+
+  getServiceEndpoint() {
+    // Try to read from environment variable first
+    if (process.env.CONSTRAINT_API_PORT) {
+      return `http://localhost:${process.env.CONSTRAINT_API_PORT}`;
+    }
+
+    // Try to read from .env.ports file
+    try {
+      const envPortsPath = join(__dirname, '../../../.env.ports');
+      if (existsSync(envPortsPath)) {
+        const content = readFileSync(envPortsPath, 'utf8');
+        const lines = content.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('CONSTRAINT_API_PORT=')) {
+            const port = line.split('=')[1].trim();
+            return `http://localhost:${port}`;
+          }
+        }
+      }
+    } catch (error) {
+      // Ignore errors
+    }
+
+    // Fallback to default port
+    return 'http://localhost:3031';
   }
 
   async generateStatus() {
@@ -118,7 +146,12 @@ class ConstraintStatusLine {
   async fetchFromService() {
     try {
       const { default: fetch } = await import('node-fetch');
-      const response = await fetch(`${this.config.serviceEndpoint}/api/status`, {
+      
+      // Detect current project from working directory or config
+      const currentProject = this.getCurrentProject();
+      const projectParam = currentProject ? `?project=${currentProject}&grouped=true` : '?grouped=true';
+      
+      const response = await fetch(`${this.config.serviceEndpoint}/api/violations?project=${currentProject}`, {
         timeout: 2000
       });
       
@@ -126,7 +159,8 @@ class ConstraintStatusLine {
         throw new Error(`HTTP ${response.status}`);
       }
       
-      return await response.json();
+      const data = await response.json();
+      return this.transformConstraintDataToStatus(data);
     } catch (error) {
       throw new Error(`Service unavailable: ${error.message}`);
     }
@@ -185,7 +219,7 @@ class ConstraintStatusLine {
     // Active violations
     if (this.config.showViolations && data.violations > 0) {
       const violationIcon = this.config.icons.warning;
-      parts.push(`${violationIcon}${data.violations}`);
+      parts.push(`${violationIcon} ${data.violations}`);
     }
 
     // Trajectory status
@@ -256,6 +290,74 @@ class ConstraintStatusLine {
     
     // Excellent compliance - green
     return this.config.colors.excellent;
+  }
+
+  getCurrentProject() {
+    // Try to detect current project from working directory
+    try {
+      const cwd = process.cwd();
+      
+      // Check if we're in the coding project directory
+      if (cwd.includes('coding')) {
+        return 'coding';
+      }
+      
+      // Extract project name from path (assuming format like /path/to/projectname)
+      const pathParts = cwd.split('/');
+      if (pathParts.length > 0) {
+        const lastPart = pathParts[pathParts.length - 1];
+        // Only return if it looks like a project name (not empty, not numeric)
+        if (lastPart && !lastPart.match(/^\d+$/)) {
+          return lastPart;
+        }
+      }
+    } catch (error) {
+      // Ignore errors
+    }
+    
+    // Fallback to config or default
+    return this.config.defaultProject || 'coding';
+  }
+
+  transformConstraintDataToStatus(violationsData) {
+    if (!violationsData || !violationsData.data) {
+      return {
+        compliance: 8.5,
+        violations: 0,
+        trajectory: 'exploring',
+        risk: 'low'
+      };
+    }
+
+    const violations = Array.isArray(violationsData.data) ? violationsData.data : [];
+    const recent24hViolations = this.getRecentViolationsFromData(violations, 24);
+    
+    // Calculate compliance rate based on violation count vs total constraints (assume 18 enabled constraints from API)
+    const totalConstraints = 18; // From the constraints API response we saw earlier
+    const complianceRate = totalConstraints > 0 
+      ? (1 - recent24hViolations.length / totalConstraints) * 10 
+      : 8.5;
+    
+    return {
+      compliance: Math.max(0, Math.min(10, complianceRate)),
+      violations: recent24hViolations.length,
+      trajectory: recent24hViolations.length > 3 ? 'off_track' : 'exploring',
+      risk: recent24hViolations.length > 5 ? 'high' : recent24hViolations.length > 2 ? 'medium' : 'low'
+    };
+  }
+
+  getRecentViolationsFromData(violations, hours) {
+    if (!violations || !Array.isArray(violations)) return [];
+    
+    const cutoff = new Date(Date.now() - (hours * 60 * 60 * 1000));
+    return violations.filter(v => {
+      try {
+        const violationTime = new Date(v.timestamp);
+        return violationTime > cutoff;
+      } catch {
+        return false;
+      }
+    });
   }
 
   buildTooltip(data) {

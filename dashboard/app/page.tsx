@@ -1,4 +1,4 @@
-import { ConstraintDashboard } from '@/components/constraint-dashboard'
+import ConstraintDashboard from '@/components/constraint-dashboard'
 
 export default function Home() {
   return <ConstraintDashboard />

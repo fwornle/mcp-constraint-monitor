@@ -9,8 +9,8 @@
   },
   "scripts": {
     "start": "node src/server.js",
-    "api": "node src/dashboard-server.js",
-    "dashboard": "cd dashboard-new && npm run dev",
+    "api": "export $(grep '^CONSTRAINT_.*=' ../../.env.ports | sed 's/#.*//' | xargs) && PORT=$CONSTRAINT_API_PORT node src/dashboard-server.js",
+    "dashboard": "cd dashboard && npm run dev",
     "setup": "node scripts/setup.js",
     "test": "node --test test/*.js",
     "demo": "node bin/demo",

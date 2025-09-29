@@ -3,9 +3,8 @@ import { QdrantDatabase } from '../databases/qdrant-client.js';
 import { DuckDBAnalytics } from '../databases/duckdb-client.js';
 
 export class ConstraintEngine {
-  constructor(config) {
-    this.config = config;
-    this.configManager = null;
+  constructor(configManager) {
+    this.configManager = configManager; // Use the provided ConfigManager
     this.constraints = new Map();
     this.violations = [];
     this.qdrant = null;
@@ -27,9 +26,10 @@ export class ConstraintEngine {
       try {
         this.qdrant = new QdrantDatabase();
         await this.qdrant.initialize();
-        logger.info('Qdrant database initialized');
+        logger.info('Qdrant database initialized successfully');
       } catch (error) {
         logger.warn('Qdrant database not available:', error.message);
+        this.qdrant = null;
       }
 
       try {
@@ -92,15 +92,31 @@ export class ConstraintEngine {
     const violations = [];
     const suggestions = [];
 
+    // Debug logging
+    logger.info(`Checking constraints for ${filePath}`, {
+      contentLength: content?.length,
+      totalConstraints: this.constraints.size,
+      constraintIds: Array.from(this.constraints.keys())
+    });
+
     for (const [id, constraint] of this.constraints) {
-      if (!constraint.enabled) continue;
+      if (!constraint.enabled) {
+        logger.debug(`Skipping disabled constraint: ${id}`);
+        continue;
+      }
 
       try {
         const regex = new RegExp(constraint.pattern, 'g');
         const matches = content.match(regex);
 
+        logger.debug(`Testing constraint ${id}`, {
+          pattern: constraint.pattern,
+          matches: matches ? matches.length : 0,
+          firstMatch: matches ? matches[0] : null
+        });
+
         if (matches) {
-          violations.push({
+          const violation = {
             constraint_id: id,
             message: constraint.message,
             severity: constraint.severity,
@@ -108,6 +124,13 @@ export class ConstraintEngine {
             pattern: constraint.pattern,
             file_path: filePath,
             detected_at: new Date().toISOString()
+          };
+
+          violations.push(violation);
+
+          logger.info(`Violation detected: ${id}`, {
+            matches: matches.length,
+            severity: constraint.severity
           });
 
           // Add suggestion based on constraint
@@ -134,6 +157,12 @@ export class ConstraintEngine {
     if (criticalViolations > 0) risk = 'critical';
     else if (errorViolations > 2) risk = 'high';
     else if (violations.length > 5) risk = 'medium';
+
+    logger.info(`Constraint check complete`, {
+      violations: violations.length,
+      compliance: Math.round(compliance * 10) / 10,
+      risk
+    });
 
     return {
       violations,

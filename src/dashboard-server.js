@@ -55,16 +55,19 @@ function loadPortConfiguration() {
 }
 
 class DashboardServer {
-    constructor(port = null) {
-        // Load port configuration from centralized .env.ports file
-        const portConfig = loadPortConfiguration();
-        this.port = port || portConfig.apiPort;
-        this.dashboardPort = portConfig.dashboardPort;
-        
+    constructor(port = 3031, dashboardPort = 3030) {
+        this.port = port;
+        this.dashboardPort = dashboardPort;
         this.app = express();
         this.server = null;
+        
+        // Initialize configuration management
         this.config = new ConfigManager();
-        this.statusGenerator = new StatusGenerator();
+        
+        // Initialize status generator
+        this.statusGenerator = new StatusGenerator(this.config);
+        
+        // Initialize constraint engine with the same ConfigManager
         this.constraintEngine = new ConstraintEngine(this.config);
         
         // Initialize constraint engine
@@ -261,6 +264,7 @@ class DashboardServer {
     async handleGetViolations(req, res) {
         try {
             let violations = [];
+            const requestedProject = req.query.project || req.headers['x-project-name'];
             
             // Try to get enhanced live session violations
             try {
@@ -268,7 +272,7 @@ class DashboardServer {
                 const enhancedEndpoint = await import(enhancedEndpointPath);
                 
                 const liveViolations = await enhancedEndpoint.getLiveSessionViolations();
-                const history = await enhancedEndpoint.getEnhancedViolationHistory(20);
+                const history = await enhancedEndpoint.getEnhancedViolationHistory(50); // Get more to filter
                 
                 // Transform violations for dashboard display
                 violations = (history.violations || []).map(violation => ({
@@ -281,22 +285,51 @@ class DashboardServer {
                     status: 'active',
                     source: 'live_session',
                     session_id: violation.sessionId,
-                    context: violation.context
+                    context: violation.context,
+                    repository: violation.context || 'unknown' // Ensure repository field exists
                 }));
+                
+                // Filter violations by project if requested
+                if (requestedProject) {
+                    logger.info(`Filtering violations for project: ${requestedProject}`, {
+                        totalViolations: violations.length,
+                        project: requestedProject
+                    });
+                    
+                    violations = violations.filter(v => 
+                        v.context === requestedProject || 
+                        v.repository === requestedProject
+                    );
+                    
+                    logger.info(`Filtered violations result`, {
+                        remainingViolations: violations.length,
+                        project: requestedProject
+                    });
+                }
+                
+                // Recalculate statistics after filtering
+                const filteredCount = violations.length;
+                const severityBreakdown = violations.reduce((acc, v) => {
+                    acc[v.severity] = (acc[v.severity] || 0) + 1;
+                    return acc;
+                }, {});
                 
                 // Add live session metadata
                 const responseData = {
                     violations: violations,
                     live_session: {
-                        active_count: liveViolations.active_session_count || 0,
-                        compliance_score: liveViolations.session_compliance_score || 10.0,
-                        trends: liveViolations.session_trends || 'stable',
-                        most_recent: liveViolations.most_recent
+                        active_count: violations.filter(v => {
+                            const hourAgo = Date.now() - (60 * 60 * 1000);
+                            return new Date(v.timestamp).getTime() > hourAgo;
+                        }).length,
+                        compliance_score: this.calculateComplianceScore(violations),
+                        trends: violations.length > 0 ? 'violations_detected' : 'stable',
+                        most_recent: violations[violations.length - 1] || null
                     },
                     statistics: {
-                        total_count: history.total_count || 0,
-                        severity_breakdown: history.severity_breakdown || {},
-                        session_types: history.session_types || {}
+                        total_count: filteredCount,
+                        severity_breakdown: severityBreakdown,
+                        project_filter: requestedProject || 'all'
                     }
                 };
                 
@@ -307,7 +340,8 @@ class DashboardServer {
                         total: responseData.statistics.total_count,
                         live_session: responseData.live_session,
                         statistics: responseData.statistics,
-                        source: 'enhanced_live_logging'
+                        source: 'enhanced_live_logging',
+                        filtered_by: requestedProject || 'none'
                     }
                 });
                 
@@ -321,7 +355,8 @@ class DashboardServer {
                     meta: {
                         total: 0,
                         source: 'default',
-                        warning: 'Enhanced live logging not available'
+                        warning: 'Enhanced live logging not available',
+                        filtered_by: requestedProject || 'none'
                     }
                 });
             }
@@ -372,6 +407,28 @@ class DashboardServer {
                 error: error.message
             });
         }
+    }
+
+    calculateComplianceScore(violations) {
+        if (!violations || violations.length === 0) {
+            return 10.0; // Perfect compliance with no violations
+        }
+        
+        // Start with perfect score
+        let score = 10.0;
+        
+        // Deduct points based on violation severity
+        violations.forEach(v => {
+            switch(v.severity) {
+                case 'critical': score -= 3.0; break;
+                case 'error': score -= 2.0; break;
+                case 'warning': score -= 1.0; break;
+                case 'info': score -= 0.5; break;
+            }
+        });
+        
+        // Clamp between 0 and 10
+        return Math.max(0, Math.min(10, score));
     }
 
     async handleHealthCheck(req, res) {
@@ -688,6 +745,23 @@ class DashboardServer {
             compliance -= (totalViolations - criticalViolations - errorViolations) * 0.5; // Other violations cost 0.5 points
             compliance = Math.max(0, Math.min(10, compliance)); // Clamp to 0-10 range
             
+            // PERSIST VIOLATIONS TO HISTORY FILE
+            if (violations.length > 0) {
+                try {
+                    this.persistViolations(violations, {
+                        project: project || 'auto-detected',
+                        projectPath,
+                        filePath: filePath || 'unknown',
+                        tool: 'api_constraint_check'
+                    });
+                } catch (persistError) {
+                    logger.warn('Failed to persist violations to history', { 
+                        error: persistError.message,
+                        violationsCount: violations.length
+                    });
+                }
+            }
+            
             logger.info('Constraint check completed', {
                 type,
                 projectPath,
@@ -727,6 +801,111 @@ class DashboardServer {
                     compliance: 10  // Fail open - assume compliant if check fails
                 }
             });
+        }
+    }
+
+    persistViolations(violations, metadata) {
+        try {
+            const historyPath = join(__dirname, '../../../.mcp-sync/violation-history.json');
+            
+            // Generate session ID and timestamp
+            const timestamp = new Date().toISOString();
+            const sessionId = `session-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+            
+            // Load existing history or create new structure
+            let history;
+            try {
+                history = JSON.parse(readFileSync(historyPath, 'utf8'));
+            } catch (error) {
+                logger.info('Creating new violation history file');
+                history = {
+                    violations: [],
+                    sessions: {},
+                    statistics: {
+                        total: 0,
+                        last24Hours: 0,
+                        severityBreakdown: {},
+                        mostCommonViolation: null,
+                        averagePerSession: "0.0",
+                        lastUpdated: timestamp
+                    }
+                };
+            }
+            
+            // Transform and add violations to history
+            const violationsToAdd = violations.map(violation => ({
+                id: `${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+                timestamp,
+                sessionId,
+                constraint_id: violation.constraint_id,
+                message: violation.message,
+                severity: violation.severity,
+                tool: metadata.tool || 'api_constraint_check',
+                context: metadata.project || 'unknown',
+                file_path: violation.file_path || metadata.filePath,
+                repository: metadata.project || 'unknown'
+            }));
+            
+            // Add violations to history
+            history.violations.push(...violationsToAdd);
+            
+            // Update session info
+            history.sessions[sessionId] = {
+                startTime: timestamp,
+                repository: metadata.project || 'unknown',
+                violationCount: violationsToAdd.length,
+                lastViolation: timestamp
+            };
+            
+            // Update statistics
+            history.statistics.total = history.violations.length;
+            
+            // Calculate last 24 hours count
+            const yesterday = Date.now() - (24 * 60 * 60 * 1000);
+            history.statistics.last24Hours = history.violations.filter(v => 
+                new Date(v.timestamp).getTime() > yesterday
+            ).length;
+            
+            // Update severity breakdown
+            history.statistics.severityBreakdown = history.violations.reduce((acc, v) => {
+                acc[v.severity] = (acc[v.severity] || 0) + 1;
+                return acc;
+            }, {});
+            
+            // Find most common violation
+            const constraintCounts = history.violations.reduce((acc, v) => {
+                acc[v.constraint_id] = (acc[v.constraint_id] || 0) + 1;
+                return acc;
+            }, {});
+            history.statistics.mostCommonViolation = Object.keys(constraintCounts).length > 0 
+                ? Object.keys(constraintCounts).reduce((a, b) => constraintCounts[a] > constraintCounts[b] ? a : b)
+                : null;
+            
+            // Update average per session
+            const sessionCount = Object.keys(history.sessions).length;
+            history.statistics.averagePerSession = sessionCount > 0 
+                ? (history.statistics.total / sessionCount).toFixed(1) 
+                : "0.0";
+            
+            history.statistics.lastUpdated = timestamp;
+            
+            // Write updated history back to file
+            writeFileSync(historyPath, JSON.stringify(history, null, 2));
+            
+            logger.info('Successfully persisted violations to history', {
+                violationsAdded: violationsToAdd.length,
+                totalViolations: history.statistics.total,
+                sessionId,
+                project: metadata.project
+            });
+            
+        } catch (error) {
+            logger.error('Failed to persist violations', { 
+                error: error.message,
+                stack: error.stack,
+                violationsCount: violations.length
+            });
+            throw error;
         }
     }
 
