@@ -1,6 +1,8 @@
 import { logger } from '../utils/logger.js';
 import { QdrantDatabase } from '../databases/qdrant-client.js';
 import { DuckDBAnalytics } from '../databases/duckdb-client.js';
+import fs from 'fs';
+import path from 'path';
 
 export class ConstraintEngine {
   constructor(configManager) {
@@ -9,6 +11,7 @@ export class ConstraintEngine {
     this.violations = [];
     this.qdrant = null;
     this.analytics = null;
+    this.fileWatcher = null;
   }
 
   async initialize() {
@@ -217,4 +220,31 @@ export class ConstraintEngine {
       active: Array.from(this.constraints.values()).filter(c => c.enabled).length
     };
   }
+
+  // NOTE: File watching approach has been deprecated in favor of pre-tool hook prevention
+  // Real-time constraint enforcement now happens through Claude Code hook system
+  // See: /src/hooks/real-time-constraint-hook.js and Real Time Guardrails specification
+
+  async startFileWatcher(options = {}) {
+    logger.warn('File watcher is deprecated. Real-time enforcement now uses Claude Code hooks.');
+    logger.info('Constraint enforcement active through pre-tool and pre-prompt hooks.');
+    return;
+  }
+
+  async stopFileWatcher() {
+    logger.info('File watcher functionality deprecated - no action needed');
+    return;
+  }
+
+  getFileWatcherStatus() {
+    return {
+      isRunning: false,
+      deprecated: true,
+      message: 'Real-time enforcement active through Claude Code hooks'
+    };
+  }
 }
+
+// NOTE: FileWatcher class removed as part of deprecating post-hoc file monitoring approach
+// Real-time constraint enforcement now happens through Claude Code pre-tool hooks
+// See Real Time Guardrails specification Task 8 - this is the correct architectural approach

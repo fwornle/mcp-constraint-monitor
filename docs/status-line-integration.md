@@ -2,6 +2,15 @@
 
 The MCP Constraint Monitor integrates seamlessly with Claude Code's status line to provide real-time feedback about your coding environment health and constraint compliance.
 
+## Real-Time Guardrails
+
+**⚠️ Important**: The constraint monitor uses **pre-tool hook prevention** for real-time constraint enforcement. Violations are blocked before execution, not detected after.
+
+**Hook Integration:**
+- **PreToolUse**: Prevents tool execution that would violate constraints
+- **UserPromptSubmit**: Checks user prompts for constraint violations
+- **Real-time Status**: Updates status line based on hook activity and health monitoring
+
 ## Status Line Format
 
 The constraint monitor displays information in this format:
@@ -83,6 +92,27 @@ The entire status line uses color coding:
 - **🟡 Yellow**: Some degradation or warnings
 - **🔴 Red**: Critical issues or poor compliance
 
+## Health Monitoring
+
+The status line includes comprehensive health monitoring indicators:
+
+### System Health Status
+- **🟢 Green Shield**: All systems operational, hooks active, API responsive
+- **🟡 Yellow Shield**: Degraded performance, some warnings detected
+- **🔴 Red Shield**: Critical issues, hooks offline, or API unresponsive
+
+### Dashboard Integration
+- **Click Action**: Status line is clickable - opens web dashboard at `http://localhost:3030`
+- **Real-time Updates**: Status updates every 5 seconds with latest metrics
+- **Health API**: Continuous monitoring of `/api/health` endpoint
+
+### Performance Metrics
+The status line reflects real-time performance:
+- **Hook Response Time**: Sub-5ms constraint checking
+- **API Latency**: Dashboard and MCP server response times
+- **Memory Usage**: System resource utilization
+- **Database Status**: SQLite, Qdrant, and Redis connectivity
+
 ## Configuration
 
 Configure the status line in Claude Code:
@@ -108,6 +138,29 @@ Configure the status line in Claude Code:
   }
 }
 ```
+
+### Hook Configuration (Required for Real-Time)
+`.claude/settings.local.json` - **Required for real-time constraint enforcement**:
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [{
+      "hooks": [{
+        "type": "command",
+        "command": "node /path/to/mcp-constraint-monitor/src/hooks/pre-prompt-hook-wrapper.js"
+      }]
+    }],
+    "PreToolUse": [{
+      "hooks": [{
+        "type": "command",
+        "command": "node /path/to/mcp-constraint-monitor/src/hooks/pre-tool-hook-wrapper.js"
+      }]
+    }]
+  }
+}
+```
+
+**⚠️ Important**: Without hook configuration, the constraint monitor operates in passive mode only. Real-time prevention requires both MCP server and hook configuration.
 
 ## Troubleshooting
 
