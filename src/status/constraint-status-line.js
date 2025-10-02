@@ -202,7 +202,7 @@ class ConstraintStatusLine {
     
     if (!data.healthy && data.error) {
       return {
-        text: `${this.config.icons.warning}CM:OFF`,
+        text: `${this.config.icons.warning} CM:OFF`,
         color: this.config.colors.critical,
         tooltip: `Constraint Monitor: ${data.error}`,
         onClick: this.getClickAction()

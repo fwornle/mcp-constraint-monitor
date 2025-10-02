@@ -119,7 +119,21 @@ export class ConfigManager {
   }
 
   getConstraints() {
-    // Look for constraints.yaml relative to this module's directory
+    // First try to find project-specific constraints in current working directory
+    const projectConstraintsPath = join(process.cwd(), '.constraint-monitor.yaml');
+    
+    if (existsSync(projectConstraintsPath)) {
+      try {
+        const content = readFileSync(projectConstraintsPath, 'utf8');
+        const data = parse(content);
+        logger.info(`Loaded project-specific constraints from ${projectConstraintsPath}`);
+        return data.constraints || [];
+      } catch (error) {
+        logger.error(`Failed to parse project constraints from ${projectConstraintsPath}`, { error: error.message });
+      }
+    }
+
+    // Fallback: Look for constraints.yaml relative to this module's directory
     const __dirname = dirname(fileURLToPath(import.meta.url));
     const constraintsPath = join(__dirname, '../../constraints.yaml');
     
@@ -131,6 +145,7 @@ export class ConfigManager {
     try {
       const content = readFileSync(constraintsPath, 'utf8');
       const data = parse(content);
+      logger.info(`Loaded fallback constraints from ${constraintsPath}`);
       return data.constraints || [];
     } catch (error) {
       logger.error('Failed to parse constraints.yaml', { error: error.message });
@@ -192,7 +207,21 @@ export class ConfigManager {
   }
 
   getConstraintGroups() {
-    // Look for constraints.yaml relative to this module's directory
+    // First try to find project-specific constraint groups in current working directory
+    const projectConstraintsPath = join(process.cwd(), '.constraint-monitor.yaml');
+    
+    if (existsSync(projectConstraintsPath)) {
+      try {
+        const content = readFileSync(projectConstraintsPath, 'utf8');
+        const data = parse(content);
+        logger.info(`Loaded project-specific constraint groups from ${projectConstraintsPath}`);
+        return data.constraint_groups || [];
+      } catch (error) {
+        logger.error(`Failed to parse project constraint groups from ${projectConstraintsPath}`, { error: error.message });
+      }
+    }
+
+    // Fallback: Look for constraints.yaml relative to this module's directory
     const __dirname = dirname(fileURLToPath(import.meta.url));
     const constraintsPath = join(__dirname, '../../constraints.yaml');
     
@@ -204,6 +233,7 @@ export class ConfigManager {
     try {
       const content = readFileSync(constraintsPath, 'utf8');
       const data = parse(content);
+      logger.info(`Loaded fallback constraint groups from ${constraintsPath}`);
       return data.constraint_groups || [];
     } catch (error) {
       logger.error('Failed to parse constraint groups from constraints.yaml', { error: error.message });
@@ -249,6 +279,21 @@ export class ConfigManager {
   }
 
   getConstraintSettings() {
+    // First try to find project-specific constraint settings in current working directory
+    const projectConstraintsPath = join(process.cwd(), '.constraint-monitor.yaml');
+    
+    if (existsSync(projectConstraintsPath)) {
+      try {
+        const content = readFileSync(projectConstraintsPath, 'utf8');
+        const data = parse(content);
+        logger.info(`Loaded project-specific constraint settings from ${projectConstraintsPath}`);
+        return data.settings || this.getDefaultSettings();
+      } catch (error) {
+        logger.error(`Failed to parse project constraint settings from ${projectConstraintsPath}`, { error: error.message });
+      }
+    }
+
+    // Fallback: Look for constraints.yaml relative to this module's directory
     const __dirname = dirname(fileURLToPath(import.meta.url));
     const constraintsPath = join(__dirname, '../../constraints.yaml');
     
@@ -259,6 +304,7 @@ export class ConfigManager {
     try {
       const content = readFileSync(constraintsPath, 'utf8');
       const data = parse(content);
+      logger.info(`Loaded fallback constraint settings from ${constraintsPath}`);
       return data.settings || this.getDefaultSettings();
     } catch (error) {
       logger.error('Failed to parse settings from constraints.yaml', { error: error.message });

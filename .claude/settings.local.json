@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/q284340/Agentic/coding/bin/**)",
+      "Read(//Users/q284340/Agentic/coding/scripts/**)",
+      "Read(//Users/q284340/.claude/commands/**)",
+      "Read(//Users/q284340/Agentic/coding/**)",
+      "Read(//Users/q284340/Library/Application Support/Claude/**)",
+      "SlashCommand(/sl)",
+      "Read(//Users/q284340/.claude/**)"
+    ]
+  },
+  "disabledMcpjsonServers": [
+    "shadcn"
+  ]
+}
