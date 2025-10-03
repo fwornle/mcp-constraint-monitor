@@ -116,7 +116,8 @@ constraints:
     suggestion: Move .puml files to docs/puml/ and update !include paths
   - id: plantuml-diagram-workflow
     group: plantuml
-    pattern: (?i)(architecture|diagram|flow|sequence).*(?:diagram|chart)
+    pattern: (architecture|diagram|flow|sequence).*(?:diagram|chart)
+    flags: i
     message: "Diagrams should follow PlantUML workflow: .puml files in docs/puml/, PNG files in docs/images/"
     severity: info
     enabled: true
@@ -124,15 +125,16 @@ constraints:
       Store PNG in docs/images/ 4. Reference PNG in markdown
   - id: plantuml-readability-guidelines
     group: plantuml
-    pattern: (?i)(too wide|barely readable|restructure.*readability)
+    pattern: (too wide|barely readable|restructure.*readability)
+    flags: i
     message: PlantUML diagrams should prioritize readability with vertical layouts and logical grouping
     severity: info
     enabled: true
     suggestion: Use 'skinparam direction top to bottom layout' and group related components in rectangles or packages
   - id: plantuml-file-organization
     group: plantuml
-    pattern: \.puml$
-    message: "PlantUML files should follow naming convention: component-purpose.puml"
+    pattern: "@startuml"
+    message: "PlantUML diagrams should be saved with descriptive names: component-purpose.puml"
     severity: info
     enabled: true
     suggestion: Use descriptive names like workflow-sequence.puml, architecture-overview.puml
@@ -145,14 +147,15 @@ constraints:
     suggestion: "Move images to docs/images/ and update markdown references: ![Description](docs/images/filename.png)"
   - id: documentation-filename-format
     group: documentation
-    pattern: "[A-Z][a-z]+[A-Z].*\\.md$"
-    message: "Documentation files should use kebab-case naming: feature-name.md"
+    pattern: "^# [A-Z][a-z]+ [A-Z][a-z]+ Documentation"
+    message: "Documentation should use consistent title format"
     severity: info
     enabled: true
-    suggestion: "Rename to kebab-case: my-feature-docs.md instead of MyFeatureDocs.md"
+    suggestion: "Use consistent formatting: # Feature Name Documentation"
   - id: update-main-readme
     group: documentation
-    pattern: (?i)readme.*(?:update|modify|change).*(?:structure|format|content)
+    pattern: readme.*(?:update|modify|change).*(?:structure|format|content)
+    flags: i
     message: Main README updates should maintain consistent structure and TOC
     severity: info
     enabled: true

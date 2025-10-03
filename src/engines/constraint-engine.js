@@ -109,7 +109,9 @@ export class ConstraintEngine {
       }
 
       try {
-        const regex = new RegExp(constraint.pattern, 'g');
+        // Build regex flags - always include 'g' for global matching, plus any constraint-specific flags
+        const flags = 'g' + (constraint.flags || '');
+        const regex = new RegExp(constraint.pattern, flags);
         const matches = content.match(regex);
 
         logger.debug(`Testing constraint ${id}`, {
