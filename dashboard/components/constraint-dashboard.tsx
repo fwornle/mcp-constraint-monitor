@@ -633,10 +633,10 @@ export default function ConstraintDashboard() {
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
-      case 'critical': return 'bg-red-500'
-      case 'error': return 'bg-red-400' 
-      case 'warning': return 'bg-yellow-400'
-      case 'info': return 'bg-blue-400'
+      case 'critical': return 'bg-red-600'     // Dark red - very distinct
+      case 'error': return 'bg-orange-500'    // Orange - clearly different from red
+      case 'warning': return 'bg-yellow-400'  // Yellow/amber - unchanged
+      case 'info': return 'bg-sky-300'        // Light blue - distinct from "now" indicator
       default: return 'bg-gray-400'
     }
   }
@@ -1227,8 +1227,8 @@ export default function ConstraintDashboard() {
                   <Bar
                     dataKey="error"
                     stackId="severity"
-                    fill="#f87171"
-                    stroke="#ef4444"
+                    fill="#f97316"
+                    stroke="#ea580c"
                     strokeWidth={1}
                     radius={[0, 0, 0, 0]}
                     onClick={(data, index) => handleBarClick(data, index, 'error')}
@@ -1449,9 +1449,9 @@ export default function ConstraintDashboard() {
                                     </code>
                                     <span className={`text-xs px-1 py-0.5 rounded ${
                                       constraint.severity === 'critical' ? 'bg-red-100 text-red-800' :
-                                      constraint.severity === 'error' ? 'bg-red-50 text-red-700' :
+                                      constraint.severity === 'error' ? 'bg-orange-100 text-orange-800' :
                                       constraint.severity === 'warning' ? 'bg-yellow-100 text-yellow-800' :
-                                      'bg-blue-100 text-blue-800'
+                                      'bg-sky-100 text-sky-800'
                                     }`}>
                                       {constraint.severity}
                                     </span>
