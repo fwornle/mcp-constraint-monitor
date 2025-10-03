@@ -1,7 +1,7 @@
 /**
  * Dashboard Configuration
  * Port configuration that reads from centralized .env.ports file
- * 
+ *
  * Environment variables from ../../.env.ports:
  * - CONSTRAINT_DASHBOARD_PORT=3030
  * - CONSTRAINT_API_PORT=3031

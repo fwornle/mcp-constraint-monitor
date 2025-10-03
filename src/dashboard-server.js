@@ -9,7 +9,7 @@ import express from 'express';
 import { createServer } from 'http';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync } from 'fs';
 import cors from 'cors';
 import { parse as parseYAML, stringify as stringifyYAML } from 'yaml';
 import { ConfigManager } from './utils/config-manager.js';
@@ -393,23 +393,28 @@ class DashboardServer {
 
             // Get project path from request or detect current project
             const projectPath = this.getCurrentProjectPath(req);
-            const project = req.body.project || 'file-watcher';
+            
+            // Use project/context from request body or first violation, fallback to 'file-watcher'
+            const project = req.body.project || violations[0]?.context || 'file-watcher';
+            const tool = req.body.tool || violations[0]?.source || 'api';
 
-            logger.info(`Storing ${violations.length} violations from file watcher`, {
+            logger.info(`Storing ${violations.length} violations`, {
                 project,
                 projectPath,
+                tool,
                 violations: violations.map(v => ({
                     id: v.constraint_id,
                     severity: v.severity,
+                    context: v.context,
                     filePath: v.file_path
                 }))
             });
 
             // Use the existing persistViolations method
-            this.persistViolations(violations, {
+            await this.persistViolations(violations, {
                 project,
                 projectPath,
-                tool: 'file-watcher',
+                tool,
                 filePath: violations[0]?.file_path || 'unknown'
             });
 
@@ -454,7 +459,7 @@ class DashboardServer {
         return Math.max(1.0, 10.0 - maxReduction);
     }
 
-    persistViolations(violations, metadata = {}) {
+    async persistViolations(violations, metadata = {}) {
         try {
             // Store violations to enhanced logging system if available
             const violationsWithMetadata = violations.map(violation => ({
@@ -468,15 +473,16 @@ class DashboardServer {
 
             // Try to write to enhanced logging system
             const enhancedLogPath = join(__dirname, '../../../scripts/enhanced-constraint-endpoint.js');
-            if (fs.existsSync(enhancedLogPath)) {
-                // Import and use enhanced logging (async, best effort)
-                import(enhancedLogPath).then(enhancedEndpoint => {
+            if (existsSync(enhancedLogPath)) {
+                try {
+                    const enhancedEndpoint = await import(enhancedLogPath);
                     if (enhancedEndpoint.storeViolations) {
                         enhancedEndpoint.storeViolations(violationsWithMetadata);
+                        logger.info('Successfully stored violations to enhanced logging');
                     }
-                }).catch(error => {
+                } catch (error) {
                     logger.warn('Could not store to enhanced logging:', error.message);
-                });
+                }
             }
 
             logger.info(`Persisted ${violations.length} violations`, {
@@ -545,8 +551,8 @@ class DashboardServer {
             let projects = [];
 
             try {
-                if (fs.existsSync(lslRegistryPath)) {
-                    const registryData = JSON.parse(fs.readFileSync(lslRegistryPath, 'utf8'));
+                if (existsSync(lslRegistryPath)) {
+                    const registryData = JSON.parse(readFileSync(lslRegistryPath, 'utf8'));
                     projects = Object.entries(registryData.projects || {}).map(([name, info]) => ({
                         name,
                         path: info.projectPath,
