@@ -112,6 +112,7 @@ export default function ConstraintDashboard() {
   const [togglingGroups, setTogglingGroups] = useState<Set<string>>(new Set())
   const [groupToggleStates, setGroupToggleStates] = useState<Record<string, boolean>>({})
   const [timeRange, setTimeRange] = useState<'24h' | '5d' | '1m' | '1y'>('24h')
+  const [expandedViolations, setExpandedViolations] = useState<Set<string>>(new Set())
 
   // Cycle through time ranges
   const cycleTimeRange = () => {
@@ -123,6 +124,7 @@ export default function ConstraintDashboard() {
 
   // Refs for scrolling
   const violationsRef = useRef<HTMLDivElement>(null)
+  const violationsListRef = useRef<HTMLDivElement>(null)
   const constraintGroupsRef = useRef<HTMLDivElement>(null)
 
   // Force initialization if useEffect doesn't work
@@ -498,9 +500,28 @@ export default function ConstraintDashboard() {
   }
 
   const scrollToConstraintGroups = () => {
-    constraintGroupsRef.current?.scrollIntoView({ 
-      behavior: 'smooth', 
-      block: 'start' 
+    constraintGroupsRef.current?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start'
+    })
+  }
+
+  const scrollToViolationsList = () => {
+    violationsListRef.current?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start'
+    })
+  }
+
+  const toggleViolationExpansion = (violationId: string) => {
+    setExpandedViolations(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(violationId)) {
+        newSet.delete(violationId)
+      } else {
+        newSet.add(violationId)
+      }
+      return newSet
     })
   }
 
@@ -568,7 +589,7 @@ export default function ConstraintDashboard() {
     })
   }
 
-  // Get violations based on selected time range
+  // Get violations based on selected time range, sorted by timestamp (newest first) and severity (most severe first as secondary)
   const getFilteredViolations = () => {
     if (!data?.violations) {
       throw new Error('Violations data not loaded - data.violations is missing')
@@ -580,7 +601,9 @@ export default function ConstraintDashboard() {
 
     const now = new Date()
     let cutoff: Date
+    let filteredViolations = data.violations
 
+    // Apply time filter first
     switch (timeRange) {
       case '24h':
         cutoff = subHours(now, 24)
@@ -593,16 +616,39 @@ export default function ConstraintDashboard() {
         break
       case '1y':
         console.log('[DEBUG] timeRange=1y, returning all', data.violations.length, 'violations')
-        return data.violations // Return all violations
+        // Don't filter by time for 1y, but still apply sorting below
+        break
+      default:
+        break
     }
 
-    return data.violations.filter(v => {
-      try {
-        const violationTime = parseISO(v.timestamp)
-        return isAfter(violationTime, cutoff)
-      } catch {
-        return false
+    // Filter by time range if not 1y
+    if (timeRange !== '1y') {
+      filteredViolations = data.violations.filter(v => {
+        try {
+          const violationTime = parseISO(v.timestamp)
+          return isAfter(violationTime, cutoff)
+        } catch {
+          return false
+        }
+      })
+    }
+
+    // Sort by timestamp (newest first) and severity (most severe first as secondary key)
+    const severityOrder = { critical: 3, error: 2, warning: 1, info: 0 }
+
+    return filteredViolations.sort((a, b) => {
+      // Primary sort: timestamp (newest first)
+      const timeA = new Date(a.timestamp).getTime()
+      const timeB = new Date(b.timestamp).getTime()
+      if (timeB !== timeA) {
+        return timeB - timeA // Descending order (newest first)
       }
+
+      // Secondary sort: severity (most severe first)
+      const severityA = severityOrder[a.severity as keyof typeof severityOrder] || 0
+      const severityB = severityOrder[b.severity as keyof typeof severityOrder] || 0
+      return severityB - severityA // Descending order (most severe first)
     })
   }
 
@@ -1005,7 +1051,16 @@ export default function ConstraintDashboard() {
             
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 60 }}>
+                <BarChart
+                  data={chartData}
+                  margin={{ top: 5, right: 30, left: 20, bottom: 60 }}
+                  onClick={(data) => {
+                    if (data && data.activePayload && data.activePayload.length > 0) {
+                      console.log('[DEBUG] Bar clicked, scrolling to violations list')
+                      scrollToViolationsList()
+                    }
+                  }}
+                >
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis 
                     dataKey="time" 
@@ -1086,7 +1141,8 @@ export default function ConstraintDashboard() {
         </div>
 
         {/* Recent Violations List */}
-        <Card className="p-4">
+        <div ref={violationsListRef}>
+          <Card className="p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 text-red-500" />
@@ -1105,35 +1161,86 @@ export default function ConstraintDashboard() {
                 <p className="text-sm">Your code is compliant with all enabled constraints!</p>
               </div>
             ) : (
-              getFilteredViolations().slice(0, 20).map((violation) => (
-                <div 
-                  key={violation.id} 
-                  className="flex items-center justify-between p-2 border border-border rounded-lg hover:bg-accent transition-colors"
-                >
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className={`flex-shrink-0 w-2 h-2 rounded-full ${getSeverityColor(violation.severity)}`} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <code className="text-xs font-mono bg-muted px-1 py-0.5 rounded">
-                          {violation.constraint_id}
-                        </code>
-                        <span className="text-xs text-muted-foreground truncate">
-                          {violation.message}
+              getFilteredViolations().slice(0, 20).map((violation) => {
+                const isExpanded = expandedViolations.has(violation.id)
+                return (
+                  <div key={violation.id} className="border border-border rounded-lg">
+                    <div
+                      className="flex items-center justify-between p-2 cursor-pointer hover:bg-accent transition-colors"
+                      onClick={() => toggleViolationExpansion(violation.id)}
+                    >
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <div className={`flex-shrink-0 w-2 h-2 rounded-full ${getSeverityColor(violation.severity)}`} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <code className="text-xs font-mono bg-muted px-1 py-0.5 rounded">
+                              {violation.constraint_id}
+                            </code>
+                            <span className="text-xs text-muted-foreground truncate">
+                              {violation.message}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className="text-xs text-muted-foreground">
+                          {formatTimeAgo(violation.timestamp)}
                         </span>
+                        {getSeverityIcon(violation.severity)}
+                        <ChevronDown
+                          className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                        />
                       </div>
                     </div>
+
+                    {isExpanded && (
+                      <div className="border-t border-border p-3 bg-muted/20">
+                        <div className="space-y-2 text-xs">
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <span className="font-medium text-muted-foreground">Tool:</span>
+                              <span className="ml-1">{violation.tool || 'N/A'}</span>
+                            </div>
+                            <div>
+                              <span className="font-medium text-muted-foreground">Session:</span>
+                              <span className="ml-1 font-mono">{violation.session_id || violation.sessionId || 'N/A'}</span>
+                            </div>
+                            <div>
+                              <span className="font-medium text-muted-foreground">Context:</span>
+                              <span className="ml-1">{violation.context || 'N/A'}</span>
+                            </div>
+                            <div>
+                              <span className="font-medium text-muted-foreground">File:</span>
+                              <span className="ml-1 font-mono">{(violation as any).file_path || 'N/A'}</span>
+                            </div>
+                            {(violation as any).matches && (
+                              <div>
+                                <span className="font-medium text-muted-foreground">Matches:</span>
+                                <span className="ml-1">{(violation as any).matches}</span>
+                              </div>
+                            )}
+                            <div>
+                              <span className="font-medium text-muted-foreground">Source:</span>
+                              <span className="ml-1">{violation.source || 'N/A'}</span>
+                            </div>
+                          </div>
+
+                          <div className="pt-2 border-t border-border">
+                            <div className="text-xs text-muted-foreground">
+                              <span className="font-medium">Full Timestamp:</span>
+                              <span className="ml-1 font-mono">{violation.timestamp}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <span className="text-xs text-muted-foreground">
-                      {formatTimeAgo(violation.timestamp)}
-                    </span>
-                    {getSeverityIcon(violation.severity)}
-                  </div>
-                </div>
-              ))
+                )
+              })
             )}
           </div>
-        </Card>
+          </Card>
+        </div>
 
         {/* Constraint Groups Management Section */}
         <div ref={constraintGroupsRef}>
