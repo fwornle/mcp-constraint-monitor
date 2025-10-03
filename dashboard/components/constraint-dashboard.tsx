@@ -155,6 +155,14 @@ export default function ConstraintDashboard() {
     }
   }, [selectedProject])
 
+  // Re-fetch violations when time range changes to get appropriate data volume
+  useEffect(() => {
+    if (selectedProject && selectedProject !== 'current') {
+      console.log('[DEBUG] TimeRange changed to:', timeRange, '- refetching violations')
+      fetchViolationsData()
+    }
+  }, [timeRange])
+
   // Fallback: If we're still loading after 5 seconds, try to fetch data anyway
   useEffect(() => {
     const fallbackTimer = setTimeout(() => {
@@ -257,7 +265,9 @@ export default function ConstraintDashboard() {
     try {
       setViolationsLoading(true)
       console.log('[DEBUG] Fetching violations for project:', selectedProject)
-      const response = await fetch(`${CONFIG.API_BASE_URL}/api/violations?project=${selectedProject}`)
+      // Fetch more violations for longer time ranges
+      const limit = timeRange === '1y' ? 1000 : timeRange === '1m' ? 500 : 200
+      const response = await fetch(`${CONFIG.API_BASE_URL}/api/violations?project=${selectedProject}&limit=${limit}`)
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
@@ -605,7 +615,23 @@ export default function ConstraintDashboard() {
 
         if (violationElement) {
           console.log('[DEBUG] Scrolling to violation element')
-          violationElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          // First scroll the parent container to make the element visible
+          const scrollContainer = violationElement.closest('.overflow-y-auto')
+          if (scrollContainer) {
+            // Calculate position of element relative to container
+            const elementRect = violationElement.getBoundingClientRect()
+            const containerRect = scrollContainer.getBoundingClientRect()
+            const relativeTop = elementRect.top - containerRect.top + scrollContainer.scrollTop
+
+            // Scroll container to center the element
+            scrollContainer.scrollTo({
+              top: relativeTop - scrollContainer.clientHeight / 2 + violationElement.clientHeight / 2,
+              behavior: 'smooth'
+            })
+          } else {
+            // Fallback to standard scrollIntoView
+            violationElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          }
         } else {
           console.log('[DEBUG] Violation element not found!')
         }
@@ -1273,7 +1299,7 @@ export default function ConstraintDashboard() {
             </div>
           </div>
           
-          <div className="space-y-2 max-h-64 overflow-y-auto">
+          <div className="space-y-2 max-h-96 overflow-y-auto">
             {getFilteredViolations().length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <CheckCircle className="h-8 w-8 mx-auto mb-2 text-green-500" />
@@ -1281,7 +1307,7 @@ export default function ConstraintDashboard() {
                 <p className="text-sm">Your code is compliant with all enabled constraints!</p>
               </div>
             ) : (
-              getFilteredViolations().slice(0, 20).map((violation) => {
+              getFilteredViolations().slice(0, 200).map((violation) => {
                 const isExpanded = expandedViolations.has(violation.id)
                 return (
                   <div key={violation.id} data-violation-id={violation.id} className="border border-border rounded-lg">
@@ -1360,6 +1386,12 @@ export default function ConstraintDashboard() {
                   </div>
                 )
               })
+            )}
+            {getFilteredViolations().length > 200 && (
+              <div className="text-center py-3 text-sm text-muted-foreground border-t">
+                Showing 200 of {getFilteredViolations().length} violations
+                <p className="text-xs mt-1">Scroll to see more</p>
+              </div>
             )}
           </div>
           </Card>

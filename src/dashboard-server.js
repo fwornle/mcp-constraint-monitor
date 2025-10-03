@@ -478,12 +478,15 @@ class DashboardServer {
             // CONSOLIDATED VIOLATION LOADING - collecting all historical violations
             const allViolations = new Map(); // Use Map to deduplicate by ID
 
-            // Define all violation storage sources
+            // Define all violation storage sources (REAL DATA ONLY - no test data)
             const sources = [
                 { name: 'main', path: this.violationsFile, description: 'main storage' },
                 { name: 'backup', path: join(__dirname, '../data/violations-backup.json'), description: 'backup storage' },
                 { name: 'scripts', path: join(__dirname, '../../../scripts/.constraint-violations.json'), description: 'scripts storage' },
-                { name: 'merged', path: '/tmp/merged-violations.json', description: 'merged historical storage' }
+                { name: 'merged', path: '/tmp/merged-violations.json', description: 'merged historical storage' },
+                { name: 'mcp-sync', path: join(__dirname, '../../../.mcp-sync/violation-history.json'), description: 'MCP sync storage' },
+                { name: 'mcp-local', path: join(__dirname, '../data/violations-mcp-sync.json'), description: 'MCP sync local copy' }
+                // Removed historic-test source - only showing real violations now
             ];
 
             let totalLoaded = 0;

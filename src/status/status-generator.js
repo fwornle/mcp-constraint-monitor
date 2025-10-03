@@ -63,9 +63,11 @@ export class StatusGenerator {
   generateStatusLine(status) {
     const parts = [];
     
-    // Compliance score with shield
+    // Compliance score with shield (show as percentage)
     if (status.compliance !== undefined) {
-      parts.push(`🛡️ ${status.compliance.toFixed(1)}`);
+      // Convert to percentage if value is between 0-10 (legacy format)
+      const compliancePercent = status.compliance <= 10 ? status.compliance * 10 : status.compliance;
+      parts.push(`🛡️ ${compliancePercent.toFixed(0)}%`);
     }
     
     // Trajectory icon and text
