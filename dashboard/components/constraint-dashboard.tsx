@@ -104,7 +104,6 @@ export default function ConstraintDashboard() {
   const [selectedProject, setSelectedProject] = useState<string>('coding') // Start with coding instead of current
   const [projects, setProjects] = useState<ProjectInfo[]>([])
   const [currentProject, setCurrentProject] = useState<string>('')
-  const [violations, setViolations] = useState<Violation[]>([])
   const [violationsLoading, setViolationsLoading] = useState(false)
   const [togglingConstraints, setTogglingConstraints] = useState<Set<string>>(new Set())
   const [togglingGroups, setTogglingGroups] = useState<Set<string>>(new Set())
@@ -208,7 +207,7 @@ export default function ConstraintDashboard() {
         const transformedData = {
           groups: result.data.constraints.map((groupData: {group: ConstraintGroup, constraints: Constraint[]}) => groupData.group),
           constraints: result.data.constraints.flatMap((groupData: {group: ConstraintGroup, constraints: Constraint[]}) => groupData.constraints),
-          violations: violations // Use violations from separate fetch
+          violations: [] // Will be updated by separate violations fetch
         }
         console.log('[DEBUG] Setting transformed data:', transformedData)
         setData(transformedData)
@@ -264,7 +263,6 @@ export default function ConstraintDashboard() {
         const violationsData = Array.isArray(result.data) ? result.data : []
         console.log('[DEBUG] Processed violations data:', violationsData.length, 'violations')
         console.log('[DEBUG] First violation:', violationsData[0])
-        setViolations(violationsData)
         
         // Update data with violations - ensure it always updates
         console.log('[DEBUG] Current data object:', data)
@@ -283,11 +281,11 @@ export default function ConstraintDashboard() {
         })
       } else {
         console.log('[DEBUG] API response format issue:', result)
-        setViolations([])
+        // Note: violations will remain empty in data object
       }
     } catch (err) {
       console.warn('Failed to fetch violations data:', err)
-      setViolations([])
+      // Note: violations will remain empty in data object
     } finally {
       setViolationsLoading(false)
     }
@@ -555,9 +553,9 @@ export default function ConstraintDashboard() {
 
   // Helper function to get violations within specified hours
   const getRecentViolations = (hours: number) => {
-    if (!violations.length) return []
+    if (!data?.violations?.length) return []
     const cutoff = subHours(new Date(), hours)
-    return violations.filter(v => {
+    return data.violations.filter(v => {
       try {
         const violationTime = parseISO(v.timestamp)
         return isAfter(violationTime, cutoff)
@@ -569,7 +567,13 @@ export default function ConstraintDashboard() {
 
   // Get violations based on selected time range
   const getFilteredViolations = () => {
-    if (!violations.length) return []
+    if (!data?.violations) {
+      throw new Error('Violations data not loaded - data.violations is missing')
+    }
+
+    console.log('[DEBUG] getFilteredViolations - timeRange:', timeRange, 'data.violations.length:', data.violations.length)
+
+    if (!data.violations.length) return []
 
     const now = new Date()
     let cutoff: Date
@@ -585,10 +589,11 @@ export default function ConstraintDashboard() {
         cutoff = subMonths(now, 1)
         break
       case 'all':
-        return violations // Return all violations
+        console.log('[DEBUG] timeRange=all, returning all', data.violations.length, 'violations')
+        return data.violations // Return all violations
     }
 
-    return violations.filter(v => {
+    return data.violations.filter(v => {
       try {
         const violationTime = parseISO(v.timestamp)
         return isAfter(violationTime, cutoff)
@@ -621,8 +626,8 @@ export default function ConstraintDashboard() {
         break
       case 'all':
         // Calculate based on oldest violation or default to 3 months
-        const oldestViolation = violations.length > 0
-          ? Math.min(...violations.map(v => parseISO(v.timestamp).getTime()))
+        const oldestViolation = (data?.violations?.length ?? 0) > 0
+          ? Math.min(...data.violations.map(v => parseISO(v.timestamp).getTime()))
           : now.getTime() - (90 * 24 * 60 * 60 * 1000)
         timelineHours = Math.ceil((now.getTime() - oldestViolation) / (60 * 60 * 1000))
         // Adjust interval based on timeline length
@@ -700,22 +705,22 @@ export default function ConstraintDashboard() {
     console.log('[DEBUG] First interval:', intervals[0])
     console.log('[DEBUG] Last interval:', intervals[intervals.length - 1])
 
-    // Use violations from data object if available, fallback to violations state
-    const violationsToUse = (data && data.violations) ? data.violations : violations
+    if (!data?.violations) {
+      console.log('[DEBUG] No violations data available, returning empty intervals')
+      return intervals // Return intervals with zero violations
+    }
 
-    console.log('[DEBUG] Chart function - violations.length:', violations.length)
-    console.log('[DEBUG] Chart function - data.violations.length:', data?.violations?.length || 0)
-    console.log('[DEBUG] Chart function - using violationsToUse.length:', violationsToUse.length)
+    console.log('[DEBUG] Chart function - data.violations.length:', data.violations.length)
 
-    if (!violationsToUse.length) {
+    if (!data.violations.length) {
       console.log('[DEBUG] No violations data, returning empty intervals with zero violations')
       return intervals // Return intervals with zero violations
     }
 
-    console.log('[DEBUG] Processing', violationsToUse.length, 'violations')
+    console.log('[DEBUG] Processing', data.violations.length, 'violations')
 
     // Aggregate violations into intervals
-    violationsToUse.forEach(violation => {
+    data.violations.forEach(violation => {
       try {
         const violationTime = parseISO(violation.timestamp)
         console.log('[DEBUG] Processing violation:', violation.id, 'actual time:', violationTime.toISOString())
@@ -962,7 +967,7 @@ export default function ConstraintDashboard() {
                   {timeRange}
                 </Button>
                 <div className="text-sm text-muted-foreground">
-                  {violations.length} violations
+                  {data?.violations?.length || 0} violations
                 </div>
               </div>
             </div>

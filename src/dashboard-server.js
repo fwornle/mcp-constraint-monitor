@@ -266,6 +266,7 @@ class DashboardServer {
         try {
             let violations = [];
             const requestedProject = req.query.project || req.headers['x-project-name'];
+            const limit = parseInt(req.query.limit) || 50; // Support limit parameter, default to 50
 
             // Try to get enhanced live session violations
             try {
@@ -273,7 +274,7 @@ class DashboardServer {
                 const enhancedEndpoint = await import(enhancedEndpointPath);
 
                 const liveViolations = await enhancedEndpoint.getLiveSessionViolations();
-                const history = await enhancedEndpoint.getEnhancedViolationHistory(50); // Get more to filter
+                const history = await enhancedEndpoint.getEnhancedViolationHistory(limit); // Use dynamic limit
 
                 // Transform violations for dashboard display
                 violations = (history.violations || []).map(violation => ({
@@ -294,7 +295,8 @@ class DashboardServer {
                 if (requestedProject) {
                     logger.info(`Filtering violations for project: ${requestedProject}`, {
                         totalViolations: violations.length,
-                        project: requestedProject
+                        project: requestedProject,
+                        requestedLimit: limit
                     });
 
                     violations = violations.filter(v =>
@@ -330,7 +332,8 @@ class DashboardServer {
                     statistics: {
                         total_count: filteredCount,
                         severity_breakdown: severityBreakdown,
-                        project_filter: requestedProject || 'all'
+                        project_filter: requestedProject || 'all',
+                        requested_limit: limit
                     }
                 };
 
@@ -342,7 +345,8 @@ class DashboardServer {
                         live_session: responseData.live_session,
                         statistics: responseData.statistics,
                         source: 'enhanced_live_logging',
-                        filtered_by: requestedProject || 'none'
+                        filtered_by: requestedProject || 'none',
+                        limit_applied: limit
                     }
                 });
 
@@ -357,7 +361,8 @@ class DashboardServer {
                         total: 0,
                         source: 'default',
                         warning: 'Enhanced live logging not available',
-                        filtered_by: requestedProject || 'none'
+                        filtered_by: requestedProject || 'none',
+                        limit_applied: limit
                     }
                 });
             }
