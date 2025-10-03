@@ -625,21 +625,8 @@ export default function ConstraintDashboard() {
         intervalHours = 24 // 24-hour intervals for month view
         break
       case 'all':
-        // Calculate based on oldest violation or default to 3 months
-        const oldestViolation = (data?.violations?.length ?? 0) > 0
-          ? Math.min(...data.violations.map(v => parseISO(v.timestamp).getTime()))
-          : now.getTime() - (90 * 24 * 60 * 60 * 1000)
-        timelineHours = Math.ceil((now.getTime() - oldestViolation) / (60 * 60 * 1000))
-        // Adjust interval based on timeline length
-        if (timelineHours <= 72) {
-          intervalHours = 2
-        } else if (timelineHours <= 168) {
-          intervalHours = 6
-        } else if (timelineHours <= 720) {
-          intervalHours = 24
-        } else {
-          intervalHours = 48
-        }
+        timelineHours = 365 * 24 // 1 year = 8760 hours
+        intervalHours = 7 * 24 // 7-day intervals for year view
         break
     }
 
@@ -674,8 +661,12 @@ export default function ConstraintDashboard() {
         const showDate = (hour === 0) || (i === 0) || (i === intervalCount - 1)
         displayLabel = showDate ? `${dateLabel} ${timeLabel}` : timeLabel
       } else {
-        // For daily or multi-day intervals, always show date
-        displayLabel = format(intervalTime, 'MMM dd')
+        // For daily or multi-day intervals, show date with year for Dec/Jan only
+        const month = intervalTime.getMonth() // 0-11, where 0=Jan, 11=Dec
+        const showYear = month === 11 || month === 0 // Dec(11), Jan(0)
+        displayLabel = showYear
+          ? format(intervalTime, 'yyyy, MMM dd')
+          : format(intervalTime, 'MMM dd')
       }
 
       // Check if current time falls within this interval
@@ -953,7 +944,7 @@ export default function ConstraintDashboard() {
                     onClick={() => setTimeRange('all')}
                     className="h-7 px-2"
                   >
-                    All
+                    1y
                   </Button>
                 </div>
                 <Button
