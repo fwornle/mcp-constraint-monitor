@@ -537,7 +537,7 @@ export default function ConstraintDashboard() {
   }
 
   // Timeline bar click handler for specific severity categories
-  const handleBarClick = (data: any, index: number, severity: 'warning' | 'error' | 'critical') => {
+  const handleBarClick = (data: any, index: number, severity: 'info' | 'warning' | 'error' | 'critical') => {
     console.log('[DEBUG] handleBarClick called with severity:', severity, 'data:', data, 'index:', index)
 
     // Get the chart data for this index
@@ -848,6 +848,7 @@ export default function ConstraintDashboard() {
         warning: 0,    // Severity-based counts for stacked bars
         error: 0,
         critical: 0,
+        info: 0,
         timestamp: intervalTime.getTime(),
         intervalTime: intervalTime.toISOString(),
         actualTime: intervalTime,
@@ -893,8 +894,10 @@ export default function ConstraintDashboard() {
               intervals[intervalIndex].critical += 1
             } else if (severity === 'error') {
               intervals[intervalIndex].error += 1
-            } else {
+            } else if (severity === 'warning') {
               intervals[intervalIndex].warning += 1
+            } else if (severity === 'info') {
+              intervals[intervalIndex].info += 1
             }
 
             console.log('[DEBUG] Added violation to interval', intervalIndex, 'at', intervals[intervalIndex].time, 'severity:', severity, 'total now:', intervals[intervalIndex].violations)
@@ -1215,6 +1218,15 @@ export default function ConstraintDashboard() {
                     }}
                   />
                   {/* Stacked bars for different severity levels */}
+                  <Bar
+                    dataKey="info"
+                    stackId="severity"
+                    fill="#0ea5e9"
+                    stroke="#0284c7"
+                    strokeWidth={1}
+                    radius={[0, 0, 0, 0]}
+                    onClick={(data, index) => handleBarClick(data, index, 'info')}
+                  />
                   <Bar
                     dataKey="warning"
                     stackId="severity"
