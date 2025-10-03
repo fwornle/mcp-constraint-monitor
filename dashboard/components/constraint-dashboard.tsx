@@ -28,9 +28,9 @@ import { Separator } from '@/components/ui/separator'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Switch } from '@/components/ui/switch'
-import { ChevronDown, ChevronUp, ChevronRight, AlertTriangle, CheckCircle, Settings, Folder, Clock, Zap, Power, PowerOff, TrendingUp, Activity, Users, Plus, Calendar } from 'lucide-react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
-import { isAfter, subHours, subDays, subMonths, format, parseISO } from 'date-fns'
+import { ChevronDown, ChevronUp, ChevronRight, AlertTriangle, CheckCircle, Settings, Folder, Clock, Zap, Power, PowerOff, TrendingUp, Activity, Users, Plus } from 'lucide-react'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { isAfter, subHours, subDays, format, parseISO } from 'date-fns'
 import CONFIG from '@/lib/config'
 
 interface Constraint {
@@ -91,7 +91,6 @@ interface ChartDataPoint {
   intervalTime: string
   actualTime: Date
   violationId?: string // Optional field for tracking individual violations
-  isCurrentInterval?: boolean // Flag to highlight current time bin
 }
 
 export default function ConstraintDashboard() {
@@ -109,19 +108,22 @@ export default function ConstraintDashboard() {
   const [togglingConstraints, setTogglingConstraints] = useState<Set<string>>(new Set())
   const [togglingGroups, setTogglingGroups] = useState<Set<string>>(new Set())
   const [groupToggleStates, setGroupToggleStates] = useState<Record<string, boolean>>({})
-  const [timeRange, setTimeRange] = useState<'24h' | '5d' | '1m' | 'all'>('24h')
-
-  // Cycle through time ranges
-  const cycleTimeRange = () => {
-    const ranges: Array<'24h' | '5d' | '1m' | 'all'> = ['24h', '5d', '1m', 'all']
-    const currentIndex = ranges.indexOf(timeRange)
-    const nextIndex = (currentIndex + 1) % ranges.length
-    setTimeRange(ranges[nextIndex])
-  }
 
   // Refs for scrolling
   const violationsRef = useRef<HTMLDivElement>(null)
   const constraintGroupsRef = useRef<HTMLDivElement>(null)
+
+  // Force initialization if useEffect doesn't work
+  if (projects.length === 0 && loading && !data) {
+    console.log('[DEBUG] Force triggering fetchProjects - useEffect bypass')
+    setTimeout(() => fetchProjects(), 100)
+  }
+
+  // Force constraint data fetch if project is selected but no data
+  if (selectedProject && selectedProject !== 'current' && !data && !error) {
+    console.log('[DEBUG] Force triggering fetchConstraintData - selectedProject set but no data')
+    setTimeout(() => fetchConstraintData(), 200)
+  }
 
   useEffect(() => {
     console.log('[DEBUG] Initial mount - fetching projects and data')
@@ -555,123 +557,37 @@ export default function ConstraintDashboard() {
     })
   }
 
-  // Get violations based on selected time range
-  const getFilteredViolations = () => {
-    if (!violations.length) return []
-
-    const now = new Date()
-    let cutoff: Date
-
-    switch (timeRange) {
-      case '24h':
-        cutoff = subHours(now, 24)
-        break
-      case '5d':
-        cutoff = subDays(now, 5)
-        break
-      case '1m':
-        cutoff = subMonths(now, 1)
-        break
-      case 'all':
-        return violations // Return all violations
-    }
-
-    return violations.filter(v => {
-      try {
-        const violationTime = parseISO(v.timestamp)
-        return isAfter(violationTime, cutoff)
-      } catch {
-        return false
-      }
-    })
-  }
-
   // Generate chart data for violations timeline - midnight-based with exact violation times as bars
   const getViolationsChartData = () => {
     const now = new Date()
-
-    // Determine timeline based on selected range
-    let timelineHours: number
-    let intervalHours: number
-
-    switch (timeRange) {
-      case '24h':
-        timelineHours = 24
-        intervalHours = 1 // 1-hour intervals for 24h view
-        break
-      case '5d':
-        timelineHours = 5 * 24 // 120 hours
-        intervalHours = 4 // 4-hour intervals for 5 day view
-        break
-      case '1m':
-        timelineHours = 30 * 24 // 720 hours
-        intervalHours = 24 // 24-hour intervals for month view
-        break
-      case 'all':
-        // Calculate based on oldest violation or default to 3 months
-        const oldestViolation = violations.length > 0
-          ? Math.min(...violations.map(v => parseISO(v.timestamp).getTime()))
-          : now.getTime() - (90 * 24 * 60 * 60 * 1000)
-        timelineHours = Math.ceil((now.getTime() - oldestViolation) / (60 * 60 * 1000))
-        // Adjust interval based on timeline length
-        if (timelineHours <= 72) {
-          intervalHours = 2
-        } else if (timelineHours <= 168) {
-          intervalHours = 6
-        } else if (timelineHours <= 720) {
-          intervalHours = 24
-        } else {
-          intervalHours = 48
-        }
-        break
-    }
-
-    // Find next boundary - ALWAYS use next midnight as the right boundary
-    const nextBoundary = new Date(now)
-    nextBoundary.setDate(nextBoundary.getDate() + 1)
-    nextBoundary.setHours(0, 0, 0, 0)
-
-    // Timeline extends from next boundary back by timelineHours
-    const timelineStart = new Date(nextBoundary.getTime() - (timelineHours * 60 * 60 * 1000))
-    const intervalCount = Math.ceil(timelineHours / intervalHours)
-
-    console.log('[DEBUG] Timeline config - range:', timeRange, 'hours:', timelineHours, 'interval:', intervalHours, 'count:', intervalCount)
-    console.log('[DEBUG] Timeline range: from', timelineStart.toISOString(), 'to', nextBoundary.toISOString())
-
-    // Create intervals - ALWAYS return this structure
+    
+    // Find next midnight ahead of us
+    const nextMidnight = new Date(now)
+    nextMidnight.setDate(nextMidnight.getDate() + 1)
+    nextMidnight.setHours(0, 0, 0, 0)
+    
+    // Timeline extends from next midnight back 72 hours (3 days) in 2-hour intervals (36 ticks)
+    const timelineStart = new Date(nextMidnight.getTime() - (72 * 60 * 60 * 1000))
+    
+    console.log('[DEBUG] Midnight-based timeline - now:', now.toISOString())
+    console.log('[DEBUG] Next midnight:', nextMidnight.toISOString()) 
+    console.log('[DEBUG] Timeline range: from', timelineStart.toISOString(), 'to', nextMidnight.toISOString())
+    
+    // Create 36 intervals of 2 hours each (72h / 2h = 36 ticks for 3 days) - ALWAYS return this structure
     const intervals: ChartDataPoint[] = []
-
-    for (let i = 0; i < intervalCount; i++) {
-      const intervalTime = new Date(timelineStart.getTime() + (i * intervalHours * 60 * 60 * 1000))
-      const intervalEnd = new Date(intervalTime.getTime() + (intervalHours * 60 * 60 * 1000))
-
-      // Format time labels based on interval size
-      let displayLabel: string
-      if (intervalHours < 24) {
-        // For hourly intervals, show full hours only (never 16:02, always 16:00)
-        const timeLabel = format(intervalTime, 'HH:00')
-        const dateLabel = format(intervalTime, 'MMM dd')
-
-        // Show date around midnight transitions or at regular intervals
-        const hour = intervalTime.getHours()
-        const showDate = (hour === 0) || (i === 0) || (i === intervalCount - 1)
-        displayLabel = showDate ? `${dateLabel} ${timeLabel}` : timeLabel
-      } else {
-        // For daily or multi-day intervals, always show date
-        displayLabel = format(intervalTime, 'MMM dd')
-      }
+    
+    for (let i = 0; i < 36; i++) {
+      const intervalTime = new Date(timelineStart.getTime() + (i * 2 * 60 * 60 * 1000))
+      const intervalEnd = new Date(intervalTime.getTime() + (2 * 60 * 60 * 1000))
       
-      // Check if current time falls within this interval
-      const isCurrentInterval = now >= intervalTime && now < intervalEnd
-
-      if (i === 0 || i === Math.floor(intervalCount / 2) || isCurrentInterval) {
-        console.log(`[DEBUG] Interval ${i} (${displayLabel}):`, {
-          intervalTime: intervalTime.toISOString(),
-          intervalEnd: intervalEnd.toISOString(),
-          now: now.toISOString(),
-          isCurrentInterval
-        })
-      }
+      // Format time labels to show date and hour in "(Sep 29) 02:00" format
+      const timeLabel = format(intervalTime, 'HH:mm')
+      const dateLabel = format(intervalTime, 'MMM dd')
+      
+      // Show date around midnight transitions (22, 23, 0, 1, 2)
+      const hour = intervalTime.getHours()
+      const showDate = hour >= 22 || hour <= 2
+      const displayLabel = showDate ? `(${dateLabel}) ${timeLabel}` : timeLabel
       
       intervals.push({
         time: displayLabel,
@@ -679,12 +595,11 @@ export default function ConstraintDashboard() {
         violations: 0, // Will be populated below
         timestamp: intervalTime.getTime(),
         intervalTime: intervalTime.toISOString(),
-        actualTime: intervalTime,
-        isCurrentInterval
+        actualTime: intervalTime
       })
     }
     
-    console.log('[DEBUG] Generated', intervals.length, `${intervalHours}h intervals for ${timelineHours}h period`)
+    console.log('[DEBUG] Generated', intervals.length, '2-hour intervals for 72h period')
     console.log('[DEBUG] First interval:', intervals[0])
     console.log('[DEBUG] Last interval:', intervals[intervals.length - 1])
     
@@ -702,17 +617,17 @@ export default function ConstraintDashboard() {
     
     console.log('[DEBUG] Processing', violationsToUse.length, 'violations')
     
-    // Aggregate violations into intervals
+    // Aggregate violations into 2-hour intervals
     violationsToUse.forEach(violation => {
       try {
         const violationTime = parseISO(violation.timestamp)
         console.log('[DEBUG] Processing violation:', violation.id, 'actual time:', violationTime.toISOString())
-
+        
         // Only include violations within our timeline window
-        if (violationTime >= timelineStart && violationTime < nextBoundary) {
-          // Find which interval this violation belongs to
-          const intervalIndex = Math.floor((violationTime.getTime() - timelineStart.getTime()) / (intervalHours * 60 * 60 * 1000))
-
+        if (violationTime >= timelineStart && violationTime < nextMidnight) {
+          // Find which 2-hour interval this violation belongs to
+          const intervalIndex = Math.floor((violationTime.getTime() - timelineStart.getTime()) / (2 * 60 * 60 * 1000))
+          
           if (intervalIndex >= 0 && intervalIndex < intervals.length) {
             intervals[intervalIndex].violations += 1
             console.log('[DEBUG] Added violation to interval', intervalIndex, 'at', intervals[intervalIndex].time, 'total now:', intervals[intervalIndex].violations)
@@ -731,14 +646,9 @@ export default function ConstraintDashboard() {
       if (interval.violations > 0) {
         console.log('[DEBUG] Interval', idx, ':', interval.fullTime, '- violations:', interval.violations)
       }
-      // Force current interval to have minimal height for visibility
-      if (interval.isCurrentInterval && interval.violations === 0) {
-        console.log('[DEBUG] Current interval has no violations, adding minimal height for visibility')
-        interval.violations = 0.1; // Minimal height to show blue bar
-      }
     })
     
-    // Always return the consistent interval structure
+    // Always return the consistent 2-hour interval structure
     return intervals
   }
 
@@ -762,7 +672,7 @@ export default function ConstraintDashboard() {
   }
 
   // Debug state values before render decisions
-  console.log('[DEBUG] Render decision - loading:', loading, 'data:', !!data, 'error:', error, 'selectedProject:', selectedProject, 'projects.length:', projects?.length || 0)
+  console.log('[DEBUG] Render decision - loading:', loading, 'data:', !!data, 'error:', error, 'selectedProject:', selectedProject, 'projects.length:', projects.length)
 
   if (loading && !data) {
     return (
@@ -835,7 +745,7 @@ export default function ConstraintDashboard() {
                 )}
               </SelectTrigger>
               <SelectContent>
-                {(projects || []).map((project) => (
+                {projects.map((project) => (
                   <SelectItem key={project.name} value={project.name} className="min-w-0">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="truncate">{project.name}</span>
@@ -904,54 +814,8 @@ export default function ConstraintDashboard() {
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
                 )}
               </div>
-              <div className="flex items-center gap-2">
-                <div className="flex gap-1 bg-muted rounded-lg p-1">
-                  <Button
-                    variant={timeRange === '24h' ? 'default' : 'ghost'}
-                    size="sm"
-                    onClick={() => setTimeRange('24h')}
-                    className="h-7 px-2"
-                  >
-                    24h
-                  </Button>
-                  <Button
-                    variant={timeRange === '5d' ? 'default' : 'ghost'}
-                    size="sm"
-                    onClick={() => setTimeRange('5d')}
-                    className="h-7 px-2"
-                  >
-                    5d
-                  </Button>
-                  <Button
-                    variant={timeRange === '1m' ? 'default' : 'ghost'}
-                    size="sm"
-                    onClick={() => setTimeRange('1m')}
-                    className="h-7 px-2"
-                  >
-                    1m
-                  </Button>
-                  <Button
-                    variant={timeRange === 'all' ? 'default' : 'ghost'}
-                    size="sm"
-                    onClick={() => setTimeRange('all')}
-                    className="h-7 px-2"
-                  >
-                    All
-                  </Button>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={cycleTimeRange}
-                  className="h-7 px-2 ml-2"
-                  title={`Current: ${timeRange} • Click to cycle to next range`}
-                >
-                  <Calendar className="h-3 w-3 mr-1" />
-                  {timeRange}
-                </Button>
-                <div className="text-sm text-muted-foreground">
-                  {violations.length} violations
-                </div>
+              <div className="text-sm text-muted-foreground">
+                {violations.length} total violations • Exact violation times as bars • Midnight-based 24h timeline
               </div>
             </div>
             
@@ -969,11 +833,10 @@ export default function ConstraintDashboard() {
                     interval={0}
                     tick={{ fontSize: 9 }}
                   />
-                  <YAxis
-                    stroke="#666"
+                  <YAxis 
+                    stroke="#666" 
                     fontSize={10}
-                    domain={[0, (dataMax: number) => Math.max(4, dataMax)]}
-                    allowDecimals={false}
+                    domain={[0, 'dataMax']}
                   />
                   <Tooltip 
                     formatter={(value: number, name: string, props: any) => {
@@ -1002,34 +865,11 @@ export default function ConstraintDashboard() {
                   />
                   <Bar 
                     dataKey="violations" 
+                    fill="#ef4444"
+                    stroke="#dc2626"
                     strokeWidth={1}
                     radius={[2, 2, 0, 0]}
-                  >
-                    {chartData.map((entry, index) => {
-                      // Determine bar color based on current interval and violations
-                      let fillColor = "#e5e7eb"; // Default gray for no violations
-                      let strokeColor = "#d1d5db";
-                      
-                      if (entry.isCurrentInterval) {
-                        // Current interval - highlight with blue
-                        fillColor = "#3b82f6"; // Blue
-                        strokeColor = "#2563eb";
-                        console.log(`[DEBUG] Bar ${index} (${entry.time}) is CURRENT INTERVAL - applying blue color`)
-                      } else if (entry.violations > 0) {
-                        // Has violations - show in red
-                        fillColor = "#ef4444"; // Red
-                        strokeColor = "#dc2626";
-                      }
-                      
-                      return (
-                        <Cell 
-                          key={`cell-${index}`} 
-                          fill={fillColor}
-                          stroke={strokeColor}
-                        />
-                      );
-                    })}
-                  </Bar>
+                  />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -1044,19 +884,19 @@ export default function ConstraintDashboard() {
               <h2 className="text-lg font-semibold">Recent Violations</h2>
             </div>
             <div className="text-sm text-muted-foreground">
-              {getFilteredViolations().length} violations in {timeRange === 'all' ? 'total' : `last ${timeRange}`}
+              {getRecentViolations(24).length} in last 24h
             </div>
           </div>
-
+          
           <div className="space-y-2 max-h-64 overflow-y-auto">
-            {getFilteredViolations().length === 0 ? (
+            {getRecentViolations(24).length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <CheckCircle className="h-8 w-8 mx-auto mb-2 text-green-500" />
-                <p>No violations in the selected time range</p>
+                <p>No violations in the last 24 hours</p>
                 <p className="text-sm">Your code is compliant with all enabled constraints!</p>
               </div>
             ) : (
-              getFilteredViolations().slice(0, 20).map((violation) => (
+              getRecentViolations(24).slice(0, 10).map((violation) => (
                 <div 
                   key={violation.id} 
                   className="flex items-center justify-between p-2 border border-border rounded-lg hover:bg-accent transition-colors"
