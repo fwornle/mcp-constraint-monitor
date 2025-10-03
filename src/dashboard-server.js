@@ -274,7 +274,7 @@ class DashboardServer {
     async handleGetViolations(req, res) {
         try {
             const requestedProject = req.query.project || req.headers['x-project-name'];
-            const limit = parseInt(req.query.limit) || 50;
+            const limit = parseInt(req.query.limit) || 0; // Changed from 50 to 0 (no default limit)
 
             // Read violations from SELF-CONTAINED storage (ELIMINATING parallel version)
             await this.loadViolations();

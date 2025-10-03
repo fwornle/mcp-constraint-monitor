@@ -963,15 +963,14 @@ export default function ConstraintDashboard() {
 
     // IMPROVED COMPLIANCE ALGORITHM:
     // Compliance should reflect constraint adherence over time, not just violation count
-    // It should decay with time and be able to recover to 100%
-    let complianceRate = 100
+    let complianceRate = 100 // Start with perfect compliance
 
     if (enabledConstraints > 0 && recent24h.length > 0) {
-      // Calculate unique constraints violated in last 24h
+      // Get unique violated constraints in the last 24h
       const violatedConstraints = new Set(recent24h.map(v => v.constraint_id)).size
 
-      // Base penalty: percentage of constraints violated
-      const constraintPenalty = (violatedConstraints / enabledConstraints) * 100
+      // Primary penalty: percentage of constraints that were violated (40% max impact)
+      const constraintPenalty = Math.min(40, (violatedConstraints / enabledConstraints) * 40)
 
       // Volume penalty: extra violations beyond one per constraint (scaled down)
       const excessViolations = Math.max(0, recent24h.length - violatedConstraints)
@@ -1184,7 +1183,7 @@ export default function ConstraintDashboard() {
                   {timeRange}
                 </Button>
                 <div className="text-sm text-muted-foreground">
-                  {data?.violations?.length || 0} violations
+                  {getFilteredViolations().length} violations
                 </div>
               </div>
             </div>
@@ -1456,67 +1455,61 @@ export default function ConstraintDashboard() {
                             <span className="text-muted-foreground">Violations:</span>
                             <span className="font-medium text-red-600">{stats.violations}</span>
                           </div>
-                          <Switch
-                            checked={groupToggleState}
-                            disabled={isToggling || groupConstraints.length === 0}
-                            onCheckedChange={(checked) => {
-                              // Prevent event bubbling to avoid triggering accordion
-                              event?.stopPropagation()
-                              toggleConstraintGroup(group.id, checked)
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                          {isToggling && (
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
-                          )}
                         </div>
                       </div>
-                      <ChevronRight 
-                        className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} 
-                      />
+                      <div className="flex items-center gap-2 ml-4" onClick={(e) => e.stopPropagation()}>
+                        <Switch
+                          checked={groupToggleState}
+                          onCheckedChange={(checked) => toggleConstraintGroup(group.id, checked)}
+                          disabled={isToggling}
+                          className="h-5 w-9"
+                        />
+                        {isToggling && (
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                        )}
+                        <ChevronDown
+                          className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                        />
+                      </div>
                     </div>
 
                     {isExpanded && (
-                      <div className="border-t border-border p-3 bg-muted/20">
-                        <div className="space-y-2">
+                      <div className="border-t border-border">
+                        <div className="p-3 space-y-2">
                           {groupConstraints.map((constraint) => {
                             const isConstraintToggling = togglingConstraints.has(constraint.id)
                             return (
-                              <div 
-                                key={constraint.id} 
-                                className="flex items-center justify-between p-2 bg-background rounded border border-border"
+                              <div
+                                key={constraint.id}
+                                className="flex items-center justify-between p-2 rounded bg-muted/50 hover:bg-muted/70 transition-colors"
                               >
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2 mb-1">
-                                    <code className="text-xs font-mono bg-muted px-1 py-0.5 rounded">
+                                    <code className="text-xs font-mono bg-background px-1 py-0.5 rounded">
                                       {constraint.id}
                                     </code>
                                     <span className={`text-xs px-1 py-0.5 rounded ${
                                       constraint.severity === 'critical' ? 'bg-red-100 text-red-800' :
                                       constraint.severity === 'error' ? 'bg-orange-100 text-orange-800' :
                                       constraint.severity === 'warning' ? 'bg-yellow-100 text-yellow-800' :
-                                      'bg-sky-100 text-sky-800'
+                                      'bg-blue-100 text-blue-800'
                                     }`}>
                                       {constraint.severity}
                                     </span>
                                   </div>
-                                  <p className="text-sm text-muted-foreground mb-1">
+                                  <p className="text-sm text-muted-foreground truncate">
                                     {constraint.message}
                                   </p>
-                                  {constraint.suggestion && (
-                                    <p className="text-xs text-muted-foreground italic">
-                                      💡 {constraint.suggestion}
-                                    </p>
-                                  )}
                                 </div>
-                                <div className="flex items-center gap-2 flex-shrink-0">
+                                <div className="flex items-center gap-2 ml-4">
                                   <Switch
                                     checked={constraint.enabled}
-                                    disabled={isConstraintToggling}
                                     onCheckedChange={() => toggleConstraint(constraint.id, constraint.enabled)}
+                                    disabled={isConstraintToggling}
+                                    className="h-4 w-7"
                                   />
                                   {isConstraintToggling && (
-                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary"></div>
+                                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-primary"></div>
                                   )}
                                 </div>
                               </div>
