@@ -171,6 +171,12 @@ constraints:
     severity: warning
     enabled: false
     suggestion: Use useReducer for complex state or separate into multiple useState calls
+enforcement:
+  enabled: true
+  blocking_levels: ['critical', 'error']
+  warning_levels: ['warning']
+  info_levels: ['info']
+  fail_open: true # Continue if constraint server unavailable
 settings:
   compliance:
     excellent_threshold: 9

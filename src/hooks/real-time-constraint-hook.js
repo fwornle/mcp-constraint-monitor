@@ -22,7 +22,7 @@ class RealTimeConstraintEnforcer {
     this.projectPath = process.env.PWD || process.cwd();
     this.constraintConfigPath = this.findConstraintConfig();
     this.config = this.loadConfig();
-    this.mcpServerUrl = 'http://localhost:3031'; // MCP constraint server
+    // Direct constraint engine integration - no HTTP calls needed
   }
 
   findConstraintConfig() {
@@ -50,36 +50,45 @@ class RealTimeConstraintEnforcer {
         encoding: 'utf8',
         timeout: 3000
       });
-      return JSON.parse(result);
+      const config = JSON.parse(result);
+
+      // Add default enforcement settings if not present
+      if (!config.enforcement) {
+        config.enforcement = {
+          enabled: true,
+          blocking_levels: ['critical', 'error'],
+          warning_levels: ['warning'],
+          info_levels: ['info'],
+          fail_open: true
+        };
+      }
+
+      return config;
     } catch (error) {
       console.error('⚠️ Failed to load constraint config:', error.message);
       return { enforcement: { enabled: false } };
     }
   }
 
-  async checkConstraintsViaMCP(content, type, context = {}) {
+  async checkConstraintsDirectly(content, type, context = {}) {
     try {
-      // Use the existing MCP constraint monitor to check violations
-      const response = await fetch(`${this.mcpServerUrl}/api/constraints/check`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content,
-          type,
-          filePath: context.filePath,
-          project: this.getProjectName()
-        }),
-        timeout: 5000
+      // Use the constraint engine directly instead of HTTP API calls
+      const { ConstraintEngine } = await import('../engines/constraint-engine.js');
+      const { ConfigManager } = await import('../utils/config-manager.js');
+
+      const configManager = new ConfigManager();
+      const constraintEngine = new ConstraintEngine(configManager);
+      await constraintEngine.initialize();
+
+      const result = await constraintEngine.checkConstraints({
+        content,
+        type,
+        filePath: context.filePath
       });
 
-      if (!response.ok) {
-        return { violations: [], compliance: 10 }; // Fail open if server unavailable
-      }
-
-      const result = await response.json();
-      return result.data || { violations: [], compliance: 10 };
+      return result;
     } catch (error) {
-      console.error('🔴 Constraint server unavailable:', error.message);
+      console.error('🔴 Constraint checking error:', error.message);
       return { violations: [], compliance: 10 }; // Fail open
     }
   }
@@ -131,7 +140,13 @@ class RealTimeConstraintEnforcer {
       return { allowed: true };
     }
 
-    const checkResult = await this.checkConstraintsViaMCP(prompt, 'prompt', context);
+    const checkResult = await this.checkConstraintsDirectly(prompt, 'prompt', context);
+
+    // Log ALL violations to dashboard BEFORE deciding whether to block
+    if (checkResult.violations && checkResult.violations.length > 0) {
+      await this.logViolationsToStorage(checkResult.violations, context, 'prompt');
+    }
+
     const blockingMessage = this.formatViolationMessage(checkResult.violations || []);
 
     if (blockingMessage) {
@@ -151,26 +166,96 @@ class RealTimeConstraintEnforcer {
       return { allowed: true };
     }
 
-    // Serialize tool call for constraint checking
-    const toolContent = JSON.stringify({
-      tool: toolCall.name,
-      parameters: toolCall.parameters || toolCall.arguments,
-      context: context
-    }, null, 2);
+    // Extract the actual content from tool calls for constraint checking
+    let contentToCheck = '';
+    const params = toolCall.parameters || toolCall.arguments || {};
 
-    const checkResult = await this.checkConstraintsViaMCP(toolContent, 'tool_call', context);
+    // For Write/Edit tool calls, check the content being written
+    if (['Write', 'Edit', 'MultiEdit'].includes(toolCall.name)) {
+      contentToCheck = params.content || params.new_string || '';
+      // Also check old_string for Edit operations
+      if (params.old_string) {
+        contentToCheck += '\n' + params.old_string;
+      }
+      // For MultiEdit, check all edits
+      if (params.edits && Array.isArray(params.edits)) {
+        params.edits.forEach(edit => {
+          contentToCheck += '\n' + (edit.new_string || '') + '\n' + (edit.old_string || '');
+        });
+      }
+    } else {
+      // For other tools, serialize the entire call
+      contentToCheck = JSON.stringify({
+        tool: toolCall.name,
+        parameters: params,
+        context: context
+      }, null, 2);
+    }
+
+    const checkResult = await this.checkConstraintsDirectly(contentToCheck, 'tool_call', context);
+
+    // Log ALL violations to dashboard BEFORE deciding whether to block
+    if (checkResult.violations && checkResult.violations.length > 0) {
+      await this.logViolationsToStorage(checkResult.violations, { ...context, filePath: params.file_path }, 'tool_call');
+    }
+
     const blockingMessage = this.formatViolationMessage(checkResult.violations || []);
 
     if (blockingMessage) {
       return {
         allowed: false,
-        reason: 'constraint_violation', 
+        reason: 'constraint_violation',
         message: blockingMessage,
         violations: checkResult.violations
       };
     }
 
     return { allowed: true, compliance: checkResult.compliance };
+  }
+
+  async logViolationsToStorage(violations, context, type) {
+    try {
+      const { readFileSync, writeFileSync } = await import('fs');
+      const violationStoragePath = '/Users/q284340/Agentic/coding/.mcp-sync/violation-history.json';
+
+      // Read existing violations
+      let existingData = { violations: [] };
+      try {
+        const content = readFileSync(violationStoragePath, 'utf8');
+        existingData = JSON.parse(content);
+      } catch (error) {
+        console.log('Creating new violation storage...');
+      }
+
+      // Add each violation with full context
+      for (const violation of violations) {
+        const loggedViolation = {
+          id: `${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+          timestamp: new Date().toISOString(),
+          sessionId: context.sessionId || `live-session-${Date.now()}`,
+          constraint_id: violation.constraint_id,
+          message: violation.message,
+          severity: violation.severity,
+          tool: type === 'prompt' ? 'live-prompt-hook' : 'live-tool-hook',
+          context: 'coding',
+          project: 'coding',
+          repository: 'coding',
+          source: 'main',
+          file_path: context.filePath || 'live-constraint-test',
+          matches: violation.matches || 1,
+          detected_at: new Date().toISOString(),
+          pattern: violation.pattern
+        };
+
+        existingData.violations.push(loggedViolation);
+        console.log(`📝 LOGGED TO DASHBOARD: ${violation.constraint_id} (${violation.severity})`);
+      }
+
+      // Write back to storage
+      writeFileSync(violationStoragePath, JSON.stringify(existingData, null, 2));
+    } catch (error) {
+      console.error('❌ Failed to log violations to storage:', error);
+    }
   }
 }
 
