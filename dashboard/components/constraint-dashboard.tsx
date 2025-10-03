@@ -525,6 +525,112 @@ export default function ConstraintDashboard() {
     })
   }
 
+  // Helper function to get interval hours based on time range
+  const getIntervalHours = () => {
+    switch (timeRange) {
+      case '24h': return 1 // 1-hour intervals
+      case '5d': return 4  // 4-hour intervals
+      case '1m': return 24 // 24-hour intervals
+      case '1y': return 7 * 24 // 7-day intervals
+      default: return 1
+    }
+  }
+
+  // Timeline bar click handler for specific severity categories
+  const handleBarClick = (data: any, index: number, severity: 'warning' | 'error' | 'critical') => {
+    console.log('[DEBUG] handleBarClick called with severity:', severity, 'data:', data, 'index:', index)
+
+    // Get the chart data for this index
+    const clickedData = chartData[index]
+    if (!clickedData) {
+      console.log('[DEBUG] No chart data found for index:', index)
+      return
+    }
+
+    console.log('[DEBUG] Clicked chart data:', clickedData)
+    console.log('[DEBUG] Looking for violations with severity:', severity)
+
+    // Get interval hours for this time range
+    const intervalHours = getIntervalHours()
+    console.log('[DEBUG] Interval hours:', intervalHours)
+
+    // Find violations in this time interval with matching severity
+    const intervalStart = new Date(clickedData.timestamp)
+    const intervalEnd = new Date(intervalStart.getTime() + (intervalHours * 60 * 60 * 1000))
+
+    console.log('[DEBUG] Time interval:', {
+      start: intervalStart.toISOString(),
+      end: intervalEnd.toISOString()
+    })
+
+    const allViolations = getFilteredViolations()
+    console.log('[DEBUG] Total filtered violations:', allViolations.length)
+
+    const violationsInInterval = allViolations.filter(violation => {
+      const violationTime = new Date(violation.timestamp)
+      const inInterval = violationTime >= intervalStart && violationTime < intervalEnd
+      const matchesSeverity = violation.severity === severity
+
+      if (inInterval && matchesSeverity) {
+        console.log('[DEBUG] Found matching violation:', violation.id, violationTime.toISOString(), 'severity:', violation.severity)
+      }
+
+      return inInterval && matchesSeverity
+    })
+
+    console.log('[DEBUG] Found', violationsInInterval.length, 'violations in clicked interval with severity:', severity)
+
+    // Scroll to violations list
+    console.log('[DEBUG] Scrolling to violations list')
+    scrollToViolationsList()
+
+    // If there are violations with this severity in this interval, expand the first one
+    if (violationsInInterval.length > 0) {
+      const targetViolation = violationsInInterval[0]
+      console.log('[DEBUG] Target violation to expand:', {
+        id: targetViolation.id,
+        timestamp: targetViolation.timestamp,
+        severity: targetViolation.severity,
+        constraint_id: targetViolation.constraint_id
+      })
+
+      // Clear existing expansions and expand the target
+      setExpandedViolations(new Set([targetViolation.id]))
+
+      // Scroll to the specific violation after a short delay
+      setTimeout(() => {
+        console.log('[DEBUG] Looking for violation element with ID:', targetViolation.id)
+        const violationElement = document.querySelector(`[data-violation-id="${targetViolation.id}"]`)
+        console.log('[DEBUG] Found violation element:', violationElement)
+
+        if (violationElement) {
+          console.log('[DEBUG] Scrolling to violation element')
+          violationElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        } else {
+          console.log('[DEBUG] Violation element not found!')
+        }
+      }, 500)
+    } else {
+      console.log('[DEBUG] No violations found in the clicked interval with severity:', severity)
+
+      // Still scroll to violations list and show a general message
+      // Let's find any violations in the interval regardless of severity to provide feedback
+      const anyViolationsInInterval = allViolations.filter(violation => {
+        const violationTime = new Date(violation.timestamp)
+        return violationTime >= intervalStart && violationTime < intervalEnd
+      })
+
+      if (anyViolationsInInterval.length > 0) {
+        console.log('[DEBUG] Found', anyViolationsInInterval.length, 'violations in interval but with different severities')
+        const severityCounts = anyViolationsInInterval.reduce((acc, v) => {
+          acc[v.severity] = (acc[v.severity] || 0) + 1
+          return acc
+        }, {} as Record<string, number>)
+        console.log('[DEBUG] Severity breakdown:', severityCounts)
+      }
+    }
+  }
+
   const getSeverityColor = (severity: string) => {
     switch (severity) {
       case 'critical': return 'bg-red-500'
@@ -552,11 +658,16 @@ export default function ConstraintDashboard() {
     const diffMins = Math.floor(diffMs / (1000 * 60))
     const diffHours = Math.floor(diffMins / 60)
     const diffDays = Math.floor(diffHours / 24)
-    
+
     if (diffDays > 0) return `${diffDays}d ago`
     if (diffHours > 0) return `${diffHours}h ago`
     if (diffMins > 0) return `${diffMins}m ago`
     return 'Just now'
+  }
+
+  const formatTimestamp = (timestamp: string) => {
+    const time = new Date(timestamp)
+    return time.toLocaleString() // Uses local timezone automatically
   }
 
   const getGroupStats = (groupId: string) => {
@@ -634,21 +745,21 @@ export default function ConstraintDashboard() {
       })
     }
 
-    // Sort by timestamp (newest first) and severity (most severe first as secondary key)
+    // Sort by timestamp (newest first, seconds granularity) and severity (most severe first as secondary key)
     const severityOrder = { critical: 3, error: 2, warning: 1, info: 0 }
 
     return filteredViolations.sort((a, b) => {
-      // Primary sort: timestamp (newest first)
-      const timeA = new Date(a.timestamp).getTime()
-      const timeB = new Date(b.timestamp).getTime()
+      // Primary sort: timestamp at seconds granularity (newest first)
+      const timeA = Math.floor(new Date(a.timestamp).getTime() / 1000) // Convert to seconds
+      const timeB = Math.floor(new Date(b.timestamp).getTime() / 1000) // Convert to seconds
       if (timeB !== timeA) {
         return timeB - timeA // Descending order (newest first)
       }
 
-      // Secondary sort: severity (most severe first)
+      // Secondary sort: severity (most severe first within same second)
       const severityA = severityOrder[a.severity as keyof typeof severityOrder] || 0
       const severityB = severityOrder[b.severity as keyof typeof severityOrder] || 0
-      return severityB - severityA // Descending order (most severe first)
+      return severityB - severityA // Descending order (critical, error, warning, info)
     })
   }
 
@@ -732,7 +843,7 @@ export default function ConstraintDashboard() {
 
       intervals.push({
         time: displayLabel,
-        fullTime: format(intervalTime, 'MMM dd HH:mm') + ' - ' + format(intervalEnd, 'HH:mm'),
+        fullTime: `${intervalTime.toLocaleDateString()} ${intervalTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} - ${intervalEnd.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`,
         violations: 0, // Will be populated below
         warning: 0,    // Severity-based counts for stacked bars
         error: 0,
@@ -1054,12 +1165,6 @@ export default function ConstraintDashboard() {
                 <BarChart
                   data={chartData}
                   margin={{ top: 5, right: 30, left: 20, bottom: 60 }}
-                  onClick={(data) => {
-                    if (data && data.activePayload && data.activePayload.length > 0) {
-                      console.log('[DEBUG] Bar clicked, scrolling to violations list')
-                      scrollToViolationsList()
-                    }
-                  }}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                   <XAxis 
@@ -1117,6 +1222,7 @@ export default function ConstraintDashboard() {
                     stroke="#f59e0b"
                     strokeWidth={1}
                     radius={[0, 0, 0, 0]}
+                    onClick={(data, index) => handleBarClick(data, index, 'warning')}
                   />
                   <Bar
                     dataKey="error"
@@ -1125,6 +1231,7 @@ export default function ConstraintDashboard() {
                     stroke="#ef4444"
                     strokeWidth={1}
                     radius={[0, 0, 0, 0]}
+                    onClick={(data, index) => handleBarClick(data, index, 'error')}
                   />
                   <Bar
                     dataKey="critical"
@@ -1133,6 +1240,7 @@ export default function ConstraintDashboard() {
                     stroke="#b91c1c"
                     strokeWidth={1}
                     radius={[2, 2, 0, 0]}
+                    onClick={(data, index) => handleBarClick(data, index, 'critical')}
                   />
                 </BarChart>
               </ResponsiveContainer>
@@ -1164,7 +1272,7 @@ export default function ConstraintDashboard() {
               getFilteredViolations().slice(0, 20).map((violation) => {
                 const isExpanded = expandedViolations.has(violation.id)
                 return (
-                  <div key={violation.id} className="border border-border rounded-lg">
+                  <div key={violation.id} data-violation-id={violation.id} className="border border-border rounded-lg">
                     <div
                       className="flex items-center justify-between p-2 cursor-pointer hover:bg-accent transition-colors"
                       onClick={() => toggleViolationExpansion(violation.id)}
@@ -1172,13 +1280,16 @@ export default function ConstraintDashboard() {
                       <div className="flex items-center gap-3 flex-1 min-w-0">
                         <div className={`flex-shrink-0 w-2 h-2 rounded-full ${getSeverityColor(violation.severity)}`} />
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 mb-1">
                             <code className="text-xs font-mono bg-muted px-1 py-0.5 rounded">
                               {violation.constraint_id}
                             </code>
-                            <span className="text-xs text-muted-foreground truncate">
-                              {violation.message}
+                            <span className="text-xs font-mono text-blue-600 bg-blue-50 px-1 py-0.5 rounded">
+                              {formatTimestamp(violation.timestamp)}
                             </span>
+                          </div>
+                          <div className="text-xs text-muted-foreground truncate">
+                            {violation.message}
                           </div>
                         </div>
                       </div>
