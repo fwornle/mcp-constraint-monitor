@@ -70,9 +70,18 @@ class DashboardServer {
         // Initialize constraint engine with the same ConfigManager
         this.constraintEngine = new ConstraintEngine(this.config);
 
+        // SELF-CONTAINED violations storage (ELIMINATING parallel version dependency)
+        this.violationsFile = join(__dirname, '../data/violations.json');
+        this.violations = [];
+
         // Initialize constraint engine
         this.constraintEngine.initialize().catch(error => {
             logger.error('Failed to initialize constraint engine:', error);
+        });
+
+        // Load existing violations on startup
+        this.loadViolations().catch(error => {
+            logger.warn('Could not load existing violations:', error.message);
         });
 
         this.setupMiddleware();
@@ -264,108 +273,74 @@ class DashboardServer {
 
     async handleGetViolations(req, res) {
         try {
-            let violations = [];
             const requestedProject = req.query.project || req.headers['x-project-name'];
-            const limit = parseInt(req.query.limit) || 50; // Support limit parameter, default to 50
+            const limit = parseInt(req.query.limit) || 50;
 
-            // Try to get enhanced live session violations
-            try {
-                const enhancedEndpointPath = join(__dirname, '../../../scripts/enhanced-constraint-endpoint.js');
-                const enhancedEndpoint = await import(enhancedEndpointPath);
+            // Read violations from SELF-CONTAINED storage (ELIMINATING parallel version)
+            await this.loadViolations();
+            let violations = [...this.violations];
 
-                const liveViolations = await enhancedEndpoint.getLiveSessionViolations();
-                const history = await enhancedEndpoint.getEnhancedViolationHistory(limit); // Use dynamic limit
-
-                // Transform violations for dashboard display
-                violations = (history.violations || []).map(violation => ({
-                    id: violation.id,
-                    constraint_id: violation.constraint_id,
-                    message: violation.message,
-                    severity: violation.severity,
-                    timestamp: violation.timestamp,
-                    tool: violation.tool,
-                    status: 'active',
-                    source: 'live_session',
-                    session_id: violation.sessionId,
-                    context: violation.context,
-                    repository: violation.context || 'unknown' // Ensure repository field exists
-                }));
-
-                // Filter violations by project if requested
-                if (requestedProject) {
-                    logger.info(`Filtering violations for project: ${requestedProject}`, {
-                        totalViolations: violations.length,
-                        project: requestedProject,
-                        requestedLimit: limit
-                    });
-
-                    violations = violations.filter(v =>
-                        v.context === requestedProject ||
-                        v.repository === requestedProject
-                    );
-
-                    logger.info(`Filtered violations result`, {
-                        remainingViolations: violations.length,
-                        project: requestedProject
-                    });
-                }
-
-                // Recalculate statistics after filtering
-                const filteredCount = violations.length;
-                const severityBreakdown = violations.reduce((acc, v) => {
-                    acc[v.severity] = (acc[v.severity] || 0) + 1;
-                    return acc;
-                }, {});
-
-                // Add live session metadata
-                const responseData = {
-                    violations: violations,
-                    live_session: {
-                        active_count: violations.filter(v => {
-                            const hourAgo = Date.now() - (60 * 60 * 1000);
-                            return new Date(v.timestamp).getTime() > hourAgo;
-                        }).length,
-                        compliance_score: this.calculateComplianceScore(violations),
-                        trends: violations.length > 0 ? 'violations_detected' : 'stable',
-                        most_recent: violations[violations.length - 1] || null
-                    },
-                    statistics: {
-                        total_count: filteredCount,
-                        severity_breakdown: severityBreakdown,
-                        project_filter: requestedProject || 'all',
-                        requested_limit: limit
-                    }
-                };
-
-                res.json({
-                    status: 'success',
-                    data: responseData.violations,
-                    meta: {
-                        total: responseData.statistics.total_count,
-                        live_session: responseData.live_session,
-                        statistics: responseData.statistics,
-                        source: 'enhanced_live_logging',
-                        filtered_by: requestedProject || 'none',
-                        limit_applied: limit
-                    }
+            // Filter violations by project if requested
+            if (requestedProject) {
+                logger.info(`Filtering violations for project: ${requestedProject}`, {
+                    totalViolations: violations.length,
+                    project: requestedProject,
+                    requestedLimit: limit
                 });
 
-            } catch (enhancedError) {
-                logger.warn('Enhanced violations not available, using default', { error: enhancedError.message });
+                violations = violations.filter(v =>
+                    v.context === requestedProject ||
+                    v.repository === requestedProject
+                );
 
-                // Fallback to empty violations
-                res.json({
-                    status: 'success',
-                    data: violations,
-                    meta: {
-                        total: 0,
-                        source: 'default',
-                        warning: 'Enhanced live logging not available',
-                        filtered_by: requestedProject || 'none',
-                        limit_applied: limit
-                    }
+                logger.info(`Filtered violations result`, {
+                    remainingViolations: violations.length,
+                    project: requestedProject
                 });
             }
+
+            // Apply limit
+            if (limit > 0) {
+                violations = violations.slice(-limit);
+            }
+
+            // Calculate statistics
+            const severityBreakdown = violations.reduce((acc, v) => {
+                acc[v.severity] = (acc[v.severity] || 0) + 1;
+                return acc;
+            }, {});
+
+            const responseData = {
+                violations: violations,
+                live_session: {
+                    active_count: violations.filter(v => {
+                        const hourAgo = Date.now() - (60 * 60 * 1000);
+                        return new Date(v.timestamp).getTime() > hourAgo;
+                    }).length,
+                    compliance_score: this.calculateComplianceScore(violations),
+                    trends: violations.length > 0 ? 'violations_detected' : 'stable',
+                    most_recent: violations[violations.length - 1] || null
+                },
+                statistics: {
+                    total_count: violations.length,
+                    severity_breakdown: severityBreakdown,
+                    project_filter: requestedProject || 'all',
+                    requested_limit: limit
+                }
+            };
+
+            res.json({
+                status: 'success',
+                data: responseData.violations,
+                meta: {
+                    total: responseData.statistics.total_count,
+                    live_session: responseData.live_session,
+                    statistics: responseData.statistics,
+                    source: 'self_contained_storage',
+                    filtered_by: requestedProject || 'none',
+                    limit_applied: limit
+                }
+            });
 
         } catch (error) {
             logger.error('Failed to get violations', { error: error.message });
@@ -466,38 +441,120 @@ class DashboardServer {
 
     async persistViolations(violations, metadata = {}) {
         try {
-            // Store violations to enhanced logging system if available
+            // Store violations to SELF-CONTAINED storage (ELIMINATING parallel version dependency)
             const violationsWithMetadata = violations.map(violation => ({
                 ...violation,
-                timestamp: new Date().toISOString(),
+                id: violation.id || `${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+                timestamp: violation.timestamp || new Date().toISOString(),
                 project: metadata.project || 'unknown',
                 tool: metadata.tool || 'api',
                 session_id: metadata.sessionId || 'api-store',
-                context: metadata.project || 'unknown'
+                context: violation.context || metadata.project || 'unknown',
+                repository: violation.repository || metadata.project || 'unknown',
+                status: 'active',
+                source: metadata.source || 'api'
             }));
 
-            // Try to write to enhanced logging system
-            const enhancedLogPath = join(__dirname, '../../../scripts/enhanced-constraint-endpoint.js');
-            if (existsSync(enhancedLogPath)) {
-                try {
-                    const enhancedEndpoint = await import(enhancedLogPath);
-                    if (enhancedEndpoint.storeViolations) {
-                        enhancedEndpoint.storeViolations(violationsWithMetadata);
-                        logger.info('Successfully stored violations to enhanced logging');
-                    }
-                } catch (error) {
-                    logger.warn('Could not store to enhanced logging:', error.message);
-                }
-            }
+            // Add violations to in-memory storage
+            this.violations.push(...violationsWithMetadata);
 
-            logger.info(`Persisted ${violations.length} violations`, {
+            // Write to self-contained file storage
+            await this.saveViolations();
+
+            logger.info(`Persisted ${violations.length} violations to self-contained storage`, {
                 project: metadata.project,
                 tool: metadata.tool,
-                violationIds: violations.map(v => v.constraint_id)
+                violationIds: violations.map(v => v.constraint_id),
+                totalViolations: this.violations.length
             });
 
         } catch (error) {
             logger.error('Failed to persist violations:', error);
+        }
+    }
+
+    async loadViolations() {
+        try {
+            // CONSOLIDATED VIOLATION LOADING - collecting all historical violations
+            const allViolations = new Map(); // Use Map to deduplicate by ID
+
+            // Define all violation storage sources
+            const sources = [
+                { name: 'main', path: this.violationsFile, description: 'main storage' },
+                { name: 'backup', path: join(__dirname, '../data/violations-backup.json'), description: 'backup storage' },
+                { name: 'scripts', path: join(__dirname, '../../../scripts/.constraint-violations.json'), description: 'scripts storage' },
+                { name: 'merged', path: '/tmp/merged-violations.json', description: 'merged historical storage' }
+            ];
+
+            let totalLoaded = 0;
+            const sourceStats = {};
+
+            // Load violations from each source
+            for (const source of sources) {
+                try {
+                    if (existsSync(source.path)) {
+                        const data = readFileSync(source.path, 'utf8');
+                        const violations = JSON.parse(data);
+                        const violationArray = Array.isArray(violations) ? violations : violations.violations || [];
+
+                        let addedCount = 0;
+                        violationArray.forEach(violation => {
+                            if (violation && violation.id) {
+                                if (!allViolations.has(violation.id)) {
+                                    allViolations.set(violation.id, {
+                                        ...violation,
+                                        source: source.name // Track source for debugging
+                                    });
+                                    addedCount++;
+                                }
+                            }
+                        });
+
+                        sourceStats[source.name] = { total: violationArray.length, added: addedCount };
+                        totalLoaded += addedCount;
+                        logger.info(`Loaded ${violationArray.length} violations from ${source.description}, ${addedCount} unique`);
+                    }
+                } catch (sourceError) {
+                    logger.warn(`Could not load violations from ${source.description}:`, sourceError.message);
+                    sourceStats[source.name] = { total: 0, added: 0, error: sourceError.message };
+                }
+            }
+
+            // Convert Map back to array
+            this.violations = Array.from(allViolations.values());
+
+            // Sort by timestamp for consistency
+            this.violations.sort((a, b) => {
+                const timeA = new Date(a.timestamp || 0).getTime();
+                const timeB = new Date(b.timestamp || 0).getTime();
+                return timeA - timeB;
+            });
+
+            logger.info(`CONSOLIDATED VIOLATIONS: Loaded ${this.violations.length} total unique violations from ${Object.keys(sourceStats).length} sources`, sourceStats);
+
+            // Save consolidated violations to main storage for persistence
+            if (this.violations.length > 0) {
+                await this.saveViolations();
+            }
+
+        } catch (error) {
+            logger.error('Failed to load consolidated violations:', error);
+            this.violations = [];
+        }
+    }
+
+    async saveViolations() {
+        try {
+            // Ensure data directory exists
+            const dataDir = join(__dirname, '../data');
+            if (!existsSync(dataDir)) {
+                await import('fs/promises').then(fs => fs.mkdir(dataDir, { recursive: true }));
+            }
+
+            writeFileSync(this.violationsFile, JSON.stringify(this.violations, null, 2));
+            logger.debug(`Saved ${this.violations.length} violations to self-contained storage`);
+        } catch (error) {
+            logger.error('Failed to save violations:', error);
         }
     }
 

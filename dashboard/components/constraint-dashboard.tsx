@@ -87,6 +87,9 @@ interface ChartDataPoint {
   time: string
   fullTime: string
   violations: number
+  warning: number    // Count of warning violations
+  error: number      // Count of error violations
+  critical: number   // Count of critical violations
   timestamp: number
   intervalTime: string
   actualTime: Date
@@ -108,11 +111,11 @@ export default function ConstraintDashboard() {
   const [togglingConstraints, setTogglingConstraints] = useState<Set<string>>(new Set())
   const [togglingGroups, setTogglingGroups] = useState<Set<string>>(new Set())
   const [groupToggleStates, setGroupToggleStates] = useState<Record<string, boolean>>({})
-  const [timeRange, setTimeRange] = useState<'24h' | '5d' | '1m' | 'all'>('24h')
+  const [timeRange, setTimeRange] = useState<'24h' | '5d' | '1m' | '1y'>('24h')
 
   // Cycle through time ranges
   const cycleTimeRange = () => {
-    const ranges: Array<'24h' | '5d' | '1m' | 'all'> = ['24h', '5d', '1m', 'all']
+    const ranges: Array<'24h' | '5d' | '1m' | '1y'> = ['24h', '5d', '1m', '1y']
     const currentIndex = ranges.indexOf(timeRange)
     const nextIndex = (currentIndex + 1) % ranges.length
     setTimeRange(ranges[nextIndex])
@@ -588,8 +591,8 @@ export default function ConstraintDashboard() {
       case '1m':
         cutoff = subMonths(now, 1)
         break
-      case 'all':
-        console.log('[DEBUG] timeRange=all, returning all', data.violations.length, 'violations')
+      case '1y':
+        console.log('[DEBUG] timeRange=1y, returning all', data.violations.length, 'violations')
         return data.violations // Return all violations
     }
 
@@ -624,7 +627,7 @@ export default function ConstraintDashboard() {
         timelineHours = 30 * 24 // 720 hours
         intervalHours = 24 // 24-hour intervals for month view
         break
-      case 'all':
+      case '1y':
         timelineHours = 365 * 24 // 1 year = 8760 hours
         intervalHours = 7 * 24 // 7-day intervals for year view
         break
@@ -685,6 +688,9 @@ export default function ConstraintDashboard() {
         time: displayLabel,
         fullTime: format(intervalTime, 'MMM dd HH:mm') + ' - ' + format(intervalEnd, 'HH:mm'),
         violations: 0, // Will be populated below
+        warning: 0,    // Severity-based counts for stacked bars
+        error: 0,
+        critical: 0,
         timestamp: intervalTime.getTime(),
         intervalTime: intervalTime.toISOString(),
         actualTime: intervalTime,
@@ -723,7 +729,18 @@ export default function ConstraintDashboard() {
 
           if (intervalIndex >= 0 && intervalIndex < intervals.length) {
             intervals[intervalIndex].violations += 1
-            console.log('[DEBUG] Added violation to interval', intervalIndex, 'at', intervals[intervalIndex].time, 'total now:', intervals[intervalIndex].violations)
+
+            // Count by severity for stacked bars
+            const severity = violation.severity || 'warning'
+            if (severity === 'critical') {
+              intervals[intervalIndex].critical += 1
+            } else if (severity === 'error') {
+              intervals[intervalIndex].error += 1
+            } else {
+              intervals[intervalIndex].warning += 1
+            }
+
+            console.log('[DEBUG] Added violation to interval', intervalIndex, 'at', intervals[intervalIndex].time, 'severity:', severity, 'total now:', intervals[intervalIndex].violations)
           }
         } else {
           console.log('[DEBUG] Violation outside timeline window:', violationTime.toISOString())
@@ -750,22 +767,45 @@ export default function ConstraintDashboard() {
     return intervals
   }
 
-  // Get accurate statistics
+  // Get accurate statistics with improved compliance algorithm
   const getAccurateStats = () => {
     const recent24h = getRecentViolations(24)
     const recent7d = getRecentViolations(7 * 24)
-    
+
     const totalConstraints = data?.constraints?.length || 0
     const enabledConstraints = data?.constraints?.filter(c => c.enabled).length || 0
-    const complianceRate = enabledConstraints > 0 ? Math.round((1 - recent24h.length / enabledConstraints) * 100) : 100
-    
+
+    // IMPROVED COMPLIANCE ALGORITHM:
+    // Compliance should reflect constraint adherence over time, not just violation count
+    // It should decay with time and be able to recover to 100%
+    let complianceRate = 100
+
+    if (enabledConstraints > 0 && recent24h.length > 0) {
+      // Calculate unique constraints violated in last 24h
+      const violatedConstraints = new Set(recent24h.map(v => v.constraint_id)).size
+
+      // Base penalty: percentage of constraints violated
+      const constraintPenalty = (violatedConstraints / enabledConstraints) * 100
+
+      // Volume penalty: extra violations beyond one per constraint (scaled down)
+      const excessViolations = Math.max(0, recent24h.length - violatedConstraints)
+      const volumePenalty = Math.min(20, excessViolations * 2) // Cap at 20% additional penalty
+
+      // Total penalty (constraint coverage + volume)
+      const totalPenalty = constraintPenalty + volumePenalty
+
+      complianceRate = Math.max(0, Math.round(100 - totalPenalty))
+    }
+
     return {
       totalConstraints,
       enabledConstraints,
       groupCount: data?.groups?.length || 0,
       recentViolations24h: recent24h.length,
       recentViolations7d: recent7d.length,
-      complianceRate: Math.max(0, Math.min(100, complianceRate))
+      complianceRate: Math.max(0, Math.min(100, complianceRate)),
+      // Add debugging info
+      violatedConstraintsCount: recent24h.length > 0 ? new Set(recent24h.map(v => v.constraint_id)).size : 0
     }
   }
 
@@ -939,9 +979,9 @@ export default function ConstraintDashboard() {
                     1m
                   </Button>
                   <Button
-                    variant={timeRange === 'all' ? 'default' : 'ghost'}
+                    variant={timeRange === '1y' ? 'default' : 'ghost'}
                     size="sm"
-                    onClick={() => setTimeRange('all')}
+                    onClick={() => setTimeRange('1y')}
                     className="h-7 px-2"
                   >
                     1y
@@ -986,17 +1026,23 @@ export default function ConstraintDashboard() {
                   <Tooltip
                     formatter={(value: number, name: string, props: any) => {
                       console.log('[DEBUG] Tooltip formatter - value:', value, 'name:', name, 'props:', props)
+                      const severityLabels: { [key: string]: string } = {
+                        warning: 'Warning',
+                        error: 'Error',
+                        critical: 'Critical'
+                      }
                       return [
-                        `${value} violation${value !== 1 ? 's' : ''}`,
-                        'Count'
+                        `${value} ${severityLabels[name] || name}${value !== 1 ? 's' : ''}`,
+                        severityLabels[name] || name
                       ]
                     }}
                     labelFormatter={(label: string, payload?: Array<any>) => {
                       if (payload && payload.length > 0) {
                         const data = payload[0]?.payload
                         console.log('[DEBUG] Tooltip labelFormatter - payload data:', data)
+                        const totalViolations = (data?.warning || 0) + (data?.error || 0) + (data?.critical || 0)
                         if (data?.fullTime) {
-                          return `Exact time: ${data.fullTime}`
+                          return `${data.fullTime} • Total: ${totalViolations} violation${totalViolations !== 1 ? 's' : ''}`
                         }
                       }
                       return `Time: ${label}`
@@ -1008,36 +1054,31 @@ export default function ConstraintDashboard() {
                       fontSize: '12px'
                     }}
                   />
+                  {/* Stacked bars for different severity levels */}
                   <Bar
-                    dataKey="violations"
+                    dataKey="warning"
+                    stackId="severity"
+                    fill="#fbbf24"
+                    stroke="#f59e0b"
+                    strokeWidth={1}
+                    radius={[0, 0, 0, 0]}
+                  />
+                  <Bar
+                    dataKey="error"
+                    stackId="severity"
+                    fill="#f87171"
+                    stroke="#ef4444"
+                    strokeWidth={1}
+                    radius={[0, 0, 0, 0]}
+                  />
+                  <Bar
+                    dataKey="critical"
+                    stackId="severity"
+                    fill="#dc2626"
+                    stroke="#b91c1c"
                     strokeWidth={1}
                     radius={[2, 2, 0, 0]}
-                  >
-                    {chartData.map((entry, index) => {
-                      // Determine bar color based on current interval and violations
-                      let fillColor = "#e5e7eb"; // Default gray for no violations
-                      let strokeColor = "#d1d5db";
-
-                      if (entry.isCurrentInterval) {
-                        // Current interval - highlight with blue
-                        fillColor = "#3b82f6"; // Blue
-                        strokeColor = "#2563eb";
-                        console.log(`[DEBUG] Bar ${index} (${entry.time}) is CURRENT INTERVAL - applying blue color`)
-                      } else if (entry.violations > 0) {
-                        // Has violations - show in red
-                        fillColor = "#ef4444"; // Red
-                        strokeColor = "#dc2626";
-                      }
-
-                      return (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={fillColor}
-                          stroke={strokeColor}
-                        />
-                      );
-                    })}
-                  </Bar>
+                  />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -1052,7 +1093,7 @@ export default function ConstraintDashboard() {
               <h2 className="text-lg font-semibold">Recent Violations</h2>
             </div>
             <div className="text-sm text-muted-foreground">
-              {getFilteredViolations().length} violations in {timeRange === 'all' ? 'total' : `last ${timeRange}`}
+              {getFilteredViolations().length} violations in {timeRange === '1y' ? 'last 1y' : `last ${timeRange}`}
             </div>
           </div>
           
