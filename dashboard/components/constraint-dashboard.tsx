@@ -63,6 +63,8 @@ interface Violation {
   source: string
   session_id?: string
   context?: string
+  file_path?: string
+  matches?: number
 }
 
 interface ConstraintData {
@@ -90,6 +92,8 @@ interface ChartDataPoint {
   warning: number    // Count of warning violations
   error: number      // Count of error violations
   critical: number   // Count of critical violations
+  info: number       // Count of info violations
+  nowMarker: number  // Blue marker for current time interval (0 or 0.2)
   timestamp: number
   intervalTime: string
   actualTime: Date
@@ -547,7 +551,7 @@ export default function ConstraintDashboard() {
   }
 
   // Timeline bar click handler for specific severity categories
-  const handleBarClick = (data: any, index: number, severity: 'info' | 'warning' | 'error' | 'critical') => {
+  const handleBarClick = (data: unknown, index: number, severity: 'info' | 'warning' | 'error' | 'critical') => {
     console.log('[DEBUG] handleBarClick called with severity:', severity, 'data:', data, 'index:', index)
 
     // Get the chart data for this index
@@ -875,6 +879,7 @@ export default function ConstraintDashboard() {
         error: 0,
         critical: 0,
         info: 0,
+        nowMarker: 0, // Will be calculated dynamically after we know max values
         timestamp: intervalTime.getTime(),
         intervalTime: intervalTime.toISOString(),
         actualTime: intervalTime,
@@ -949,6 +954,22 @@ export default function ConstraintDashboard() {
       }
     })
 
+    // Calculate dynamic "now" marker height based on chart's maximum y-axis value
+    const maxTotalViolations = Math.max(
+      ...intervals.map(interval => interval.warning + interval.error + interval.critical + interval.info),
+      4 // Minimum scale to match YAxis domain
+    )
+
+    // Set "now" marker to 8% of the maximum y-axis value for good visibility
+    const nowMarkerHeight = Math.max(0.1, maxTotalViolations * 0.08)
+
+    intervals.forEach((interval, idx) => {
+      if (interval.isCurrentInterval) {
+        interval.nowMarker = nowMarkerHeight
+        console.log('[DEBUG] Set nowMarker for current interval', idx, 'to', nowMarkerHeight, '(8% of max', maxTotalViolations, ')')
+      }
+    })
+
     // Always return the consistent interval structure
     return intervals
   }
@@ -963,7 +984,7 @@ export default function ConstraintDashboard() {
 
     // IMPROVED COMPLIANCE ALGORITHM:
     // Compliance should reflect constraint adherence over time, not just violation count
-    let complianceRate = 100 // Start with perfect compliance
+    let complianceRate = 100 // Start with perfect compliance (percentage scale)
 
     if (enabledConstraints > 0 && recent24h.length > 0) {
       // Get unique violated constraints in the last 24h
@@ -1212,7 +1233,7 @@ export default function ConstraintDashboard() {
                     allowDecimals={false}
                   />
                   <Tooltip
-                    formatter={(value: number, name: string, props: any) => {
+                    formatter={(value: number, name: string, props: unknown) => {
                       console.log('[DEBUG] Tooltip formatter - value:', value, 'name:', name, 'props:', props)
                       const severityLabels: { [key: string]: string } = {
                         warning: 'Warning',
@@ -1224,11 +1245,11 @@ export default function ConstraintDashboard() {
                         severityLabels[name] || name
                       ]
                     }}
-                    labelFormatter={(label: string, payload?: Array<any>) => {
+                    labelFormatter={(label: unknown, payload: readonly unknown[]) => {
                       if (payload && payload.length > 0) {
-                        const data = payload[0]?.payload
+                        const data = (payload[0] as { payload?: ChartDataPoint })?.payload
                         console.log('[DEBUG] Tooltip labelFormatter - payload data:', data)
-                        const totalViolations = (data?.warning || 0) + (data?.error || 0) + (data?.critical || 0)
+                        const totalViolations = (data?.warning || 0) + (data?.error || 0) + (data?.critical || 0) + (data?.info || 0)
                         if (data?.fullTime) {
                           return `${data.fullTime} • Total: ${totalViolations} violation${totalViolations !== 1 ? 's' : ''}`
                         }
@@ -1278,6 +1299,16 @@ export default function ConstraintDashboard() {
                     strokeWidth={1}
                     radius={[2, 2, 0, 0]}
                     onClick={(data, index) => handleBarClick(data, index, 'critical')}
+                  />
+                  {/* Blue "now" marker - separate stack for current time indicator */}
+                  <Bar
+                    dataKey="nowMarker"
+                    stackId="nowIndicator"
+                    fill="#0066ff"
+                    stroke="#0052cc"
+                    strokeWidth={1}
+                    radius={[1, 1, 1, 1]}
+                    name="Current Time"
                   />
                 </BarChart>
               </ResponsiveContainer>
@@ -1351,7 +1382,7 @@ export default function ConstraintDashboard() {
                             </div>
                             <div>
                               <span className="font-medium text-muted-foreground">Session:</span>
-                              <span className="ml-1 font-mono">{violation.session_id || violation.sessionId || 'N/A'}</span>
+                              <span className="ml-1 font-mono">{violation.session_id || 'N/A'}</span>
                             </div>
                             <div>
                               <span className="font-medium text-muted-foreground">Context:</span>
@@ -1359,12 +1390,12 @@ export default function ConstraintDashboard() {
                             </div>
                             <div>
                               <span className="font-medium text-muted-foreground">File:</span>
-                              <span className="ml-1 font-mono">{(violation as any).file_path || 'N/A'}</span>
+                              <span className="ml-1 font-mono">{violation.file_path || 'N/A'}</span>
                             </div>
-                            {(violation as any).matches && (
+                            {violation.matches && (
                               <div>
                                 <span className="font-medium text-muted-foreground">Matches:</span>
-                                <span className="ml-1">{(violation as any).matches}</span>
+                                <span className="ml-1">{violation.matches}</span>
                               </div>
                             )}
                             <div>

@@ -183,6 +183,11 @@ class RealTimeConstraintEnforcer {
           contentToCheck += '\n' + (edit.new_string || '') + '\n' + (edit.old_string || '');
         });
       }
+
+      // SPECIAL CASE: For file path constraints, also check the file path
+      if (params.file_path) {
+        contentToCheck += '\n' + params.file_path;
+      }
     } else {
       // For other tools, serialize the entire call
       contentToCheck = JSON.stringify({

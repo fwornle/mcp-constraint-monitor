@@ -116,7 +116,7 @@ class ConstraintStatusLine {
 
   async getStatusData() {
     const statusData = {
-      compliance: 8.5,
+      compliance: 85, // Changed from 8.5 to 85% (percentage scale)
       violations: 0,
       trajectory: 'on_track',
       risk: 'low',
@@ -168,7 +168,7 @@ class ConstraintStatusLine {
 
   loadLocalData() {
     const data = {
-      compliance: 8.5,
+      compliance: 85, // Changed from 8.5 to 85% (percentage scale)
       violations: 0,
       trajectory: 'exploring',
       risk: 'low'
@@ -186,7 +186,7 @@ class ConstraintStatusLine {
       const metricsPath = join(this.dataPath, 'metrics.json');
       if (existsSync(metricsPath)) {
         const metrics = JSON.parse(readFileSync(metricsPath, 'utf8'));
-        data.compliance = metrics.complianceScore || 8.5;
+        data.compliance = metrics.complianceScore || 85; // Changed from 8.5 to 85%
         data.trajectory = metrics.trajectory || 'exploring';
         data.risk = metrics.riskLevel || 'low';
       }
@@ -209,11 +209,11 @@ class ConstraintStatusLine {
       };
     }
 
-    // Compliance score
+    // Compliance score - now properly formatted as percentage
     if (this.config.showCompliance) {
       const complianceIcon = this.config.icons.shield;
-      const score = typeof data.compliance === 'number' ? data.compliance.toFixed(1) : '?';
-      parts.push(`${complianceIcon} ${score}`);  // Added space for better rendering
+      const score = typeof data.compliance === 'number' ? `${Math.round(data.compliance)}%` : '?';
+      parts.push(`${complianceIcon} ${score}`);  // Now shows "85%" instead of "8.5"
     }
 
     // Active violations
@@ -278,13 +278,13 @@ class ConstraintStatusLine {
       return this.config.colors.warning;
     }
     
-    // Low compliance - yellow
-    if (data.compliance < 7.0) {
+    // Low compliance - yellow (changed from 7.0 to 70% for percentage scale)
+    if (data.compliance < 70) {
       return this.config.colors.warning;
     }
     
-    // Good compliance - cyan
-    if (data.compliance < 9.0) {
+    // Good compliance - cyan (changed from 9.0 to 90% for percentage scale)
+    if (data.compliance < 90) {
       return this.config.colors.good;
     }
     
@@ -322,7 +322,7 @@ class ConstraintStatusLine {
   transformConstraintDataToStatus(violationsData) {
     if (!violationsData || !violationsData.data) {
       return {
-        compliance: 8.5,
+        compliance: 85, // Default 85% (not 8.5 on 0-10 scale)
         violations: 0,
         trajectory: 'exploring',
         risk: 'low'
@@ -330,19 +330,45 @@ class ConstraintStatusLine {
     }
 
     const violations = Array.isArray(violationsData.data) ? violationsData.data : [];
-    const recent24hViolations = this.getRecentViolationsFromData(violations, 24);
-    
-    // Calculate compliance rate based on violation count vs total constraints (assume 18 enabled constraints from API)
-    const totalConstraints = 18; // From the constraints API response we saw earlier
-    const complianceRate = totalConstraints > 0 
-      ? (1 - recent24hViolations.length / totalConstraints) * 10 
-      : 8.5;
-    
+
+    // CENTRALIZED COMPLIANCE ALGORITHM: Same as dashboard - percentage based (0-100%)
+    // Start at 100% (perfect compliance)
+    let complianceRate = 100;
+
+    if (violations.length > 0) {
+      // Get violations from different time windows
+      const recent24hViolations = this.getRecentViolationsFromData(violations, 24);
+      
+      if (recent24hViolations.length > 0) {
+        // Use same algorithm as dashboard: constraint coverage penalty + volume penalty
+        // Note: We don't have enabledConstraints count here, so use simplified version
+        
+        // Get unique violated constraints in the last 24h
+        const violatedConstraints = new Set(recent24hViolations.map(v => v.constraint_id)).size;
+        
+        // Simplified penalty calculation (since we don't have total constraints count)
+        // Primary penalty: base penalty for having violations (20% max)
+        const basePenalty = Math.min(20, violatedConstraints * 5); // 5% per unique constraint violated
+        
+        // Volume penalty: extra violations beyond unique constraints
+        const excessViolations = Math.max(0, recent24hViolations.length - violatedConstraints);
+        const volumePenalty = Math.min(20, excessViolations * 2); // 2% per excess violation, max 20%
+        
+        // Total penalty
+        const totalPenalty = basePenalty + volumePenalty;
+        complianceRate = Math.max(0, Math.round(100 - totalPenalty));
+      }
+    }
+
+    // Get recent violations for other metrics
+    const recent1hViolations = this.getRecentViolationsFromData(violations, 1);
+    const recent6hViolations = this.getRecentViolationsFromData(violations, 6);
+
     return {
-      compliance: Math.max(0, Math.min(10, complianceRate)),
-      violations: recent24hViolations.length,
-      trajectory: recent24hViolations.length > 3 ? 'off_track' : 'exploring',
-      risk: recent24hViolations.length > 5 ? 'high' : recent24hViolations.length > 2 ? 'medium' : 'low'
+      compliance: Math.max(0, Math.min(100, complianceRate)), // Percentage scale (0-100%)
+      violations: recent1hViolations.length, // Show only recent hour violations
+      trajectory: recent1hViolations.length > 3 ? 'off_track' : recent6hViolations.length === 0 ? 'on_track' : 'exploring',
+      risk: recent1hViolations.length > 5 ? 'high' : recent1hViolations.length > 2 ? 'medium' : 'low'
     };
   }
 
@@ -364,11 +390,11 @@ class ConstraintStatusLine {
     const lines = ['🛡️ Constraint Monitor Status'];
     lines.push('━'.repeat(28));
     
-    // Compliance section
+    // Compliance section - now properly shows percentage
     if (data.compliance !== undefined) {
-      const score = data.compliance.toFixed(1);
+      const score = Math.round(data.compliance);
       const scoreBar = this.getScoreBar(data.compliance);
-      lines.push(`📊 Compliance: ${score}/10.0`);
+      lines.push(`📊 Compliance: ${score}%`); // Changed from "/10.0" to "%"
       lines.push(`   ${scoreBar} ${this.getComplianceLabel(data.compliance)}`);
     }
     
@@ -412,15 +438,15 @@ class ConstraintStatusLine {
 
   getScoreBar(score) {
     const width = 15;
-    const filled = Math.round((score / 10) * width);
+    const filled = Math.round((score / 100) * width); // Changed from /10 to /100 for percentage scale
     const empty = width - filled;
     return '█'.repeat(filled) + '░'.repeat(empty);
   }
 
   getComplianceLabel(score) {
-    if (score >= 9.0) return '(Excellent)';
-    if (score >= 7.0) return '(Good)';
-    if (score >= 5.0) return '(Fair)';
+    if (score >= 90) return '(Excellent)'; // Changed from 9.0 to 90%
+    if (score >= 70) return '(Good)';      // Changed from 7.0 to 70%
+    if (score >= 50) return '(Fair)';      // Changed from 5.0 to 50%
     return '(Needs Attention)';
   }
 
