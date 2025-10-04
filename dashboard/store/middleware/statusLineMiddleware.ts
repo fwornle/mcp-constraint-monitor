@@ -1,7 +1,7 @@
 import { Middleware, isAction } from '@reduxjs/toolkit'
 import { RootState, AppDispatch } from '../index'
 import { fetchConstraintData } from '../slices/constraintsSlice'
-import { fetchGlobalHealth, fetchServiceHealth } from '../slices/globalHealthSlice'
+// Removed fetchGlobalHealth, fetchServiceHealth - these endpoints don't exist
 import { fetchProjects, detectCurrentProject } from '../slices/projectsSlice'
 import { fetchApiCosts, fetchCurrentSessionCost } from '../slices/apiCostSlice'
 import { fetchLslStatus, fetchLslMetrics } from '../slices/lslWindowSlice'
@@ -65,17 +65,9 @@ class StatusLineManager {
       return this.store!.dispatch(fetchConstraintData(currentProject || undefined))
     }, this.config.intervals.constraints)
 
-    // Global health monitoring
-    this.scheduleRefresh('globalHealth', () => {
-      return this.store!.dispatch(fetchGlobalHealth())
-    }, this.config.intervals.globalHealth)
-
-    // Service health monitoring (staggered from global health)
-    setTimeout(() => {
-      this.scheduleRefresh('serviceHealth', () => {
-        return this.store!.dispatch(fetchServiceHealth())
-      }, this.config.intervals.globalHealth)
-    }, 2000)
+    // NOTE: Removed global health and service health monitoring 
+    // as these endpoints (/api/health/global, /api/health/services) don't exist
+    // The API only has /api/health for basic health checks
 
     // Projects monitoring
     this.scheduleRefresh('projects', () => {
@@ -238,12 +230,7 @@ export const statusLineMiddleware: Middleware<{}, RootState, AppDispatch> =
           }, 100)
           break
 
-        case 'globalHealth/restartService/fulfilled':
-          // When service is restarted, check health again after delay
-          setTimeout(() => {
-            store.dispatch(fetchServiceHealth())
-          }, 3000)
-          break
+        // Removed globalHealth/restartService case - fetchServiceHealth endpoint doesn't exist
 
         case 'apiCost/logUsage/fulfilled':
           // When API usage is logged, refresh session cost

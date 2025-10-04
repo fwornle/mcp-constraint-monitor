@@ -70,12 +70,38 @@ export const fetchConstraintData = createAsyncThunk(
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3031'
     const projectParam = project ? `?project=${project}&grouped=true` : '?grouped=true'
 
-    const response = await fetch(`${baseUrl}/api/violations${projectParam}`)
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+    // Fetch both violations and constraints in parallel
+    const [violationsResponse, constraintsResponse] = await Promise.all([
+      fetch(`${baseUrl}/api/violations${projectParam}`),
+      fetch(`${baseUrl}/api/constraints${projectParam}`)
+    ])
+
+    if (!violationsResponse.ok) {
+      throw new Error(`Violations API error: HTTP ${violationsResponse.status}: ${violationsResponse.statusText}`)
+    }
+    if (!constraintsResponse.ok) {
+      throw new Error(`Constraints API error: HTTP ${constraintsResponse.status}: ${constraintsResponse.statusText}`)
     }
 
-    return response.json()
+    const violationsData = await violationsResponse.json()
+    const constraintsData = await constraintsResponse.json()
+
+    // Combine the data in the format expected by the reducer
+    const violations = violationsData.data || violationsData || []
+
+    // Extract and flatten constraints from grouped response
+    let constraints = []
+    if (constraintsData.data?.constraints) {
+      // Flatten constraints from all groups
+      constraints = constraintsData.data.constraints.flatMap((group: any) =>
+        group.constraints || []
+      )
+    }
+
+    return {
+      violations,
+      constraints
+    }
   }
 )
 

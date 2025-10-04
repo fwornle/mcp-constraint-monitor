@@ -32,6 +32,20 @@ import { ChevronDown, ChevronUp, ChevronRight, AlertTriangle, CheckCircle, Setti
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { isAfter, subHours, subDays, subMonths, format, parseISO } from 'date-fns'
 import CONFIG from '@/lib/config'
+import { useAppDispatch, useAppSelector } from '@/store'
+import {
+  fetchConstraintData,
+  toggleConstraint as toggleConstraintAction,
+  setTimeRange,
+  selectCompliance,
+  selectViolations,
+  selectConstraints,
+  selectRecentViolations24h,
+  selectTimeRange,
+  selectConstraintsLoading,
+  selectConstraintsError
+} from '@/store/slices/constraintsSlice'
+import { selectProjects, selectCurrentProject, fetchProjects } from '@/store/slices/projectsSlice'
 
 interface Constraint {
   id: string
@@ -102,20 +116,27 @@ interface ChartDataPoint {
 }
 
 export default function ConstraintDashboard() {
-  const [data, setData] = useState<ConstraintData | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  // Redux state
+  const dispatch = useAppDispatch()
+  const compliance = useAppSelector(selectCompliance)
+  const violations = useAppSelector(selectViolations)
+  const constraints = useAppSelector(selectConstraints)
+  const recentViolations24h = useAppSelector(selectRecentViolations24h)
+  const timeRange = useAppSelector(selectTimeRange)
+  const loading = useAppSelector(selectConstraintsLoading)
+  const error = useAppSelector(selectConstraintsError)
+  const projects = useAppSelector(selectProjects)
+  const currentProject = useAppSelector(selectCurrentProject)
+
+  // Local UI state that doesn't need to be in Redux
   const [expandedGroups, setExpandedGroups] = useState<string[]>([])
   const [allExpanded, setAllExpanded] = useState(false)
   const [projectSwitching, setProjectSwitching] = useState(false)
-  const [selectedProject, setSelectedProject] = useState<string>('coding') // Start with coding instead of current
-  const [projects, setProjects] = useState<ProjectInfo[]>([])
-  const [currentProject, setCurrentProject] = useState<string>('')
+  const [selectedProject, setSelectedProject] = useState<string>('coding')
   const [violationsLoading, setViolationsLoading] = useState(false)
   const [togglingConstraints, setTogglingConstraints] = useState<Set<string>>(new Set())
   const [togglingGroups, setTogglingGroups] = useState<Set<string>>(new Set())
   const [groupToggleStates, setGroupToggleStates] = useState<Record<string, boolean>>({})
-  const [timeRange, setTimeRange] = useState<'24h' | '5d' | '1m' | '1y'>('24h')
   const [expandedViolations, setExpandedViolations] = useState<Set<string>>(new Set())
 
   // Cycle through time ranges
@@ -123,7 +144,7 @@ export default function ConstraintDashboard() {
     const ranges: Array<'24h' | '5d' | '1m' | '1y'> = ['24h', '5d', '1m', '1y']
     const currentIndex = ranges.indexOf(timeRange)
     const nextIndex = (currentIndex + 1) % ranges.length
-    setTimeRange(ranges[nextIndex])
+    dispatch(setTimeRange(ranges[nextIndex]))
   }
 
   // Refs for scrolling
@@ -131,225 +152,60 @@ export default function ConstraintDashboard() {
   const violationsListRef = useRef<HTMLDivElement>(null)
   const constraintGroupsRef = useRef<HTMLDivElement>(null)
 
-  // Force initialization if useEffect doesn't work
-  if (projects.length === 0 && loading && !data) {
-    console.log('[DEBUG] Force triggering fetchProjects - useEffect bypass')
-    setTimeout(() => fetchProjects(), 100)
-  }
-
-  // Force constraint data fetch if project is selected but no data
-  if (selectedProject && selectedProject !== 'current' && !data && !error) {
-    console.log('[DEBUG] Force triggering fetchConstraintData - selectedProject set but no data')
-    setTimeout(() => fetchConstraintData(), 200)
-  }
-
+  // Single useEffect for initial data loading
   useEffect(() => {
-    console.log('[DEBUG] Initial mount - fetching projects and data')
-    fetchProjects()
-  }, [])
+    console.log('[DEBUG] Initial mount - fetching projects')
+    dispatch(fetchProjects())
+  }, [dispatch])
 
+  // Single useEffect for constraint data when project or timeRange changes
   useEffect(() => {
-    console.log('[DEBUG] SelectedProject changed:', selectedProject)
     if (selectedProject && selectedProject !== 'current') {
-      console.log('[DEBUG] Fetching constraints for project:', selectedProject)
+      console.log('[DEBUG] Fetching constraints for project:', selectedProject, 'timeRange:', timeRange)
       setProjectSwitching(true)
-      fetchConstraintData().finally(() => setProjectSwitching(false))
-    } else {
-      console.log('[DEBUG] Skipping constraint fetch - selectedProject:', selectedProject)
+      dispatch(fetchConstraintData(selectedProject)).finally(() => setProjectSwitching(false))
     }
-  }, [selectedProject])
+  }, [selectedProject, timeRange, dispatch])
 
-  // Re-fetch violations when time range changes to get appropriate data volume
+  // Gentle refresh every 60 seconds (reduced from 30)
   useEffect(() => {
-    if (selectedProject && selectedProject !== 'current') {
-      console.log('[DEBUG] TimeRange changed to:', timeRange, '- refetching violations')
-      fetchViolationsData()
-    }
-  }, [timeRange])
+    if (!selectedProject || selectedProject === 'current') return
 
-  // Fallback: If we're still loading after 5 seconds, try to fetch data anyway
-  useEffect(() => {
-    const fallbackTimer = setTimeout(() => {
-      if (loading && !data) {
-        console.log('[DEBUG] Fallback: Still loading after 5s, forcing data fetch')
-        if (selectedProject && selectedProject !== 'current') {
-          fetchConstraintData()
-        } else {
-          // Force set to coding project and fetch
-          console.log('[DEBUG] Fallback: Setting project to coding and fetching')
-          setSelectedProject('coding')
-        }
-      }
-    }, 5000)
-
-    return () => clearTimeout(fallbackTimer)
-  }, [loading, data, selectedProject])
-
-  useEffect(() => {
-    if (!selectedProject) return
-
-    const currentProject = selectedProject
     const constraintInterval = setInterval(() => {
-      // Only refresh if we're still on the same project
-      if (selectedProject === currentProject) {
-        fetchConstraintData()
-      }
-    }, 30000) // Refresh every 30 seconds
-    
+      console.log('[DEBUG] Scheduled refresh for project:', selectedProject)
+      dispatch(fetchConstraintData(selectedProject))
+    }, 60000) // Refresh every 60 seconds
+
     const projectInterval = setInterval(() => {
       // Project list can refresh regardless of selected project
-      fetchProjects()
+      dispatch(fetchProjects())
     }, 60000) // Refresh projects every minute
-    
+
     return () => {
       clearInterval(constraintInterval)
       clearInterval(projectInterval)
     }
-  }, [selectedProject]) // Project-aware dependency
+  }, [selectedProject, dispatch]) // Project-aware dependency
 
-  const fetchConstraintData = async () => {
-    try {
-      console.log('[DEBUG] fetchConstraintData starting for project:', selectedProject)
-      setLoading(true)
-      const response = await fetch(`${CONFIG.API_BASE_URL}/api/constraints?grouped=true&project=${selectedProject}`)
-      console.log('[DEBUG] Constraints API response status:', response.status)
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-      const result = await response.json()
-      console.log('[DEBUG] Constraints API result:', result)
-      
-      // Transform the API response to match component expectations
-      if (result.status === 'success' && result.data) {
-        const transformedData = {
-          groups: result.data.constraints.map((groupData: {group: ConstraintGroup, constraints: Constraint[]}) => groupData.group),
-          constraints: result.data.constraints.flatMap((groupData: {group: ConstraintGroup, constraints: Constraint[]}) => groupData.constraints),
-          violations: [] // Will be updated by separate violations fetch
-        }
-        console.log('[DEBUG] Setting transformed data:', transformedData)
-        setData(transformedData)
-        
-        // Initialize group toggle states ONLY if not already set (preserve manual toggles)
-        setGroupToggleStates(prev => {
-          // If previous state exists, update only new groups while preserving existing ones
-          const newGroupStates = { ...prev }
-          let hasChanges = false
-          
-          transformedData.groups.forEach((group: ConstraintGroup) => {
-            // Only initialize groups that don't already have a state
-            if (!(group.id in prev)) {
-              const groupConstraints = transformedData.constraints.filter((c: Constraint) => c.groupId === group.id)
-              newGroupStates[group.id] = groupConstraints.length > 0 && groupConstraints.every((c: Constraint) => c.enabled)
-              hasChanges = true
-            }
-          })
-          
-          return hasChanges ? newGroupStates : prev
-        })
-        
-        setError(null)
-      } else {
-        console.error('[DEBUG] Unexpected API response format:', result)
-        setError('Invalid API response format')
-        return
-      }
-      
-      // Also fetch violations
-      fetchViolationsData()
-    } catch (err) {
-      console.error('[DEBUG] Failed to fetch constraint data:', err)
-      setError(err instanceof Error ? err.message : 'Failed to load data')
-    } finally {
-      console.log('[DEBUG] fetchConstraintData completed')
-      setLoading(false)
-    }
-  }
 
-  const fetchViolationsData = async () => {
-    try {
-      setViolationsLoading(true)
-      console.log('[DEBUG] Fetching violations for project:', selectedProject)
-      // Fetch more violations for longer time ranges
-      const limit = timeRange === '1y' ? 1000 : timeRange === '1m' ? 500 : 200
-      const response = await fetch(`${CONFIG.API_BASE_URL}/api/violations?project=${selectedProject}&limit=${limit}`)
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-      const result = await response.json()
-      console.log('[DEBUG] API response result:', result)
-      
-      if (result.status === 'success' && result.data) {
-        const violationsData = Array.isArray(result.data) ? result.data : []
-        console.log('[DEBUG] Processed violations data:', violationsData.length, 'violations')
-        console.log('[DEBUG] First violation:', violationsData[0])
-        
-        // Update data with violations - ensure it always updates
-        console.log('[DEBUG] Current data object:', data)
-        console.log('[DEBUG] Updating data.violations with', violationsData.length, 'violations')
-        setData(prevData => {
-          if (prevData) {
-            const updatedData = { ...prevData, violations: violationsData }
-            console.log('[DEBUG] Updated data object:', updatedData)
-            return updatedData
-          } else {
-            // If no prevData, create new data object with violations
-            const newData = { groups: [], constraints: [], violations: violationsData }
-            console.log('[DEBUG] Created new data object:', newData)
-            return newData
-          }
-        })
-      } else {
-        console.log('[DEBUG] API response format issue:', result)
-        // Note: violations will remain empty in data object
-      }
-    } catch (err) {
-      console.warn('Failed to fetch violations data:', err)
-      // Note: violations will remain empty in data object
-    } finally {
-      setViolationsLoading(false)
-    }
-  }
 
   const toggleConstraint = async (constraintId: string, currentEnabled: boolean) => {
     try {
       setTogglingConstraints(prev => new Set(prev).add(constraintId))
-      
-      const response = await fetch(`${CONFIG.API_BASE_URL}/api/constraints/${constraintId}/toggle?project=${selectedProject}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ enabled: !currentEnabled }),
-      })
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-      
-      const result = await response.json()
-      
-      if (result.status === 'success') {
-        // Update local state immediately for responsive UI
-        setData(prevData => {
-          if (!prevData) return prevData
-          return {
-            ...prevData,
-            constraints: prevData.constraints.map(constraint =>
-              constraint.id === constraintId
-                ? { ...constraint, enabled: !currentEnabled }
-                : constraint
-            )
-          }
-        })
-        
-        // Project-aware refresh: only refresh if still on the same project
-        const currentProject = selectedProject
-        setTimeout(() => {
-          if (selectedProject === currentProject) {
-            fetchConstraintData()
-          }
-        }, 2000)
-      }
+
+      await dispatch(toggleConstraintAction({
+        constraintId,
+        enabled: !currentEnabled,
+        project: selectedProject
+      }))
+
+      // Project-aware refresh: only refresh if still on the same project
+      const currentProject = selectedProject
+      setTimeout(() => {
+        if (selectedProject === currentProject) {
+          dispatch(fetchConstraintData(selectedProject))
+        }
+      }, 2000)
     } catch (err) {
       console.error('Failed to toggle constraint:', err)
       // Show error feedback - could add toast notification here
@@ -366,62 +222,41 @@ export default function ConstraintDashboard() {
   const toggleConstraintGroup = async (groupId: string, enableAll: boolean) => {
     try {
       setTogglingGroups(prev => new Set(prev).add(groupId))
-      
-      const groupConstraints = data?.constraints?.filter(c => c.groupId === groupId) || []
-      
+
+      const groupConstraints = constraints?.filter(c => c.groupId === groupId) || []
+
       // Update group toggle state immediately for UI responsiveness
       setGroupToggleStates(prev => ({
         ...prev,
         [groupId]: enableAll
       }))
-      
-      // Toggle all constraints in the group with project parameter
+
+      // Toggle all constraints in the group using Redux actions
       const togglePromises = groupConstraints.map(constraint =>
-        fetch(`${CONFIG.API_BASE_URL}/api/constraints/${constraint.id}/toggle?project=${selectedProject}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ enabled: enableAll }),
-        })
-      )
-      
-      const results = await Promise.all(togglePromises)
-      
-      // Check if all requests succeeded
-      const allSucceeded = results.every(response => response.ok)
-      
-      if (allSucceeded) {
-        // Update local state immediately
-        setData(prevData => {
-          if (!prevData) return prevData
-          return {
-            ...prevData,
-            constraints: prevData.constraints.map(constraint =>
-              constraint.groupId === groupId
-                ? { ...constraint, enabled: enableAll }
-                : constraint
-            )
-          }
-        })
-        
-        // Project-aware refresh: only refresh if still on the same project
-        const currentProject = selectedProject
-        setTimeout(() => {
-          if (selectedProject === currentProject) {
-            fetchConstraintData()
-          }
-        }, 2000)
-      } else {
-        // Revert group toggle state if API calls failed
-        setGroupToggleStates(prev => ({
-          ...prev,
-          [groupId]: !enableAll
+        dispatch(toggleConstraintAction({
+          constraintId: constraint.id,
+          enabled: enableAll,
+          project: selectedProject
         }))
-        throw new Error('Some constraints failed to toggle')
-      }
+      )
+
+      await Promise.all(togglePromises)
+
+      // Project-aware refresh: only refresh if still on the same project
+      const currentProject = selectedProject
+      setTimeout(() => {
+        if (selectedProject === currentProject) {
+          dispatch(fetchConstraintData(selectedProject))
+        }
+      }, 2000)
+
     } catch (err) {
       console.error('Failed to toggle group:', err)
+      // Revert group toggle state if API calls failed
+      setGroupToggleStates(prev => ({
+        ...prev,
+        [groupId]: !enableAll
+      }))
       alert(`Failed to toggle group: ${err instanceof Error ? err.message : 'Unknown error'}`)
     } finally {
       setTogglingGroups(prev => {
@@ -432,50 +267,6 @@ export default function ConstraintDashboard() {
     }
   }
 
-  const fetchProjects = async () => {
-    try {
-      console.log('[DEBUG] Fetching projects...')
-      const response = await fetch(`${CONFIG.API_BASE_URL}/api/projects`)
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-      const result = await response.json()
-      console.log('[DEBUG] Projects response:', result)
-      if (result.status === 'success') {
-        setProjects(result.data)
-        setCurrentProject('coding')
-        
-        console.log('[DEBUG] Current selectedProject:', selectedProject, 'Current project from API: coding')
-        // Only update selectedProject if it's still "current" - don't override user selection
-        if (selectedProject === 'current') {
-          console.log('[DEBUG] Setting selectedProject to: coding')
-          setSelectedProject('coding')
-          // Since useEffect isn't working, fetch constraints directly here
-          console.log('[DEBUG] Force triggering fetchConstraintData after project selection')
-          setTimeout(() => fetchConstraintData(), 300)
-        } else if (selectedProject !== 'current') {
-          // If a project is already selected, fetch its constraints
-          console.log('[DEBUG] Project already selected, fetching constraints')
-          fetchConstraintData()
-        }
-      }
-    } catch (err) {
-      console.warn('Failed to fetch projects, using fallback', err)
-      // Fallback to current project only
-      const fallbackProject = 'Current Project'
-      setProjects([{
-        name: fallbackProject,
-        path: '/current',
-        status: 'active',
-        active: true,
-        current: true
-      }])
-      setCurrentProject(fallbackProject)
-      if (selectedProject === 'current') {
-        setSelectedProject(fallbackProject)
-      }
-    }
-  }
 
   const toggleAccordionGroup = (groupId: string) => {
     setExpandedGroups(prev => 
@@ -486,8 +277,10 @@ export default function ConstraintDashboard() {
   }
 
   const expandAll = () => {
-    if (data) {
-      setExpandedGroups(data.groups.map(g => g.id))
+    if (constraints.length > 0) {
+      // Get unique group IDs from constraints
+      const groupIds = [...new Set(constraints.map(c => c.groupId).filter(Boolean))]
+      setExpandedGroups(groupIds)
       setAllExpanded(true)
     }
   }
@@ -701,14 +494,14 @@ export default function ConstraintDashboard() {
   }
 
   const getGroupStats = (groupId: string) => {
-    if (!data) return { total: 0, enabled: 0, violations: 0 }
-    
-    const groupConstraints = data.constraints?.filter(c => c.groupId === groupId) || []
+    if (!constraints.length) return { total: 0, enabled: 0, violations: 0 }
+
+    const groupConstraints = constraints?.filter(c => c.groupId === groupId) || []
     const recentViolations = getRecentViolations(24) // Only violations from last 24 hours
-    const groupViolations = recentViolations.filter(v => 
+    const groupViolations = recentViolations.filter(v =>
       groupConstraints.some(c => c.id === v.constraint_id)
     )
-    
+
     return {
       total: groupConstraints.length,
       enabled: groupConstraints.filter(c => c.enabled).length,
@@ -718,9 +511,9 @@ export default function ConstraintDashboard() {
 
   // Helper function to get violations within specified hours
   const getRecentViolations = (hours: number) => {
-    if (!data?.violations?.length) return []
+    if (!violations?.length) return []
     const cutoff = subHours(new Date(), hours)
-    return data.violations.filter(v => {
+    return violations.filter(v => {
       try {
         const violationTime = parseISO(v.timestamp)
         return isAfter(violationTime, cutoff)
@@ -732,17 +525,17 @@ export default function ConstraintDashboard() {
 
   // Get violations based on selected time range, sorted by timestamp (newest first) and severity (most severe first as secondary)
   const getFilteredViolations = () => {
-    if (!data?.violations) {
-      throw new Error('Violations data not loaded - data.violations is missing')
+    if (!violations) {
+      throw new Error('Violations data not loaded - violations is missing')
     }
 
-    console.log('[DEBUG] getFilteredViolations - timeRange:', timeRange, 'data.violations.length:', data.violations.length)
+    console.log('[DEBUG] getFilteredViolations - timeRange:', timeRange, 'violations.length:', violations.length)
 
-    if (!data.violations.length) return []
+    if (!violations.length) return []
 
     const now = new Date()
     let cutoff: Date
-    let filteredViolations = data.violations
+    let filteredViolations = violations
 
     // Apply time filter first
     switch (timeRange) {
@@ -756,7 +549,7 @@ export default function ConstraintDashboard() {
         cutoff = subMonths(now, 1)
         break
       case '1y':
-        console.log('[DEBUG] timeRange=1y, returning all', data.violations.length, 'violations')
+        console.log('[DEBUG] timeRange=1y, returning all', violations.length, 'violations')
         // Don't filter by time for 1y, but still apply sorting below
         break
       default:
@@ -765,7 +558,7 @@ export default function ConstraintDashboard() {
 
     // Filter by time range if not 1y
     if (timeRange !== '1y') {
-      filteredViolations = data.violations.filter(v => {
+      filteredViolations = violations.filter(v => {
         try {
           const violationTime = parseISO(v.timestamp)
           return isAfter(violationTime, cutoff)
@@ -778,7 +571,7 @@ export default function ConstraintDashboard() {
     // Sort by timestamp (newest first, seconds granularity) and severity (most severe first as secondary key)
     const severityOrder = { critical: 3, error: 2, warning: 1, info: 0 }
 
-    return filteredViolations.sort((a, b) => {
+    return [...filteredViolations].sort((a, b) => {
       // Primary sort: timestamp at seconds granularity (newest first)
       const timeA = Math.floor(new Date(a.timestamp).getTime() / 1000) // Convert to seconds
       const timeB = Math.floor(new Date(b.timestamp).getTime() / 1000) // Convert to seconds
@@ -891,22 +684,22 @@ export default function ConstraintDashboard() {
     console.log('[DEBUG] First interval:', intervals[0])
     console.log('[DEBUG] Last interval:', intervals[intervals.length - 1])
 
-    if (!data?.violations) {
+    if (!violations) {
       console.log('[DEBUG] No violations data available, returning empty intervals')
       return intervals // Return intervals with zero violations
     }
 
-    console.log('[DEBUG] Chart function - data.violations.length:', data.violations.length)
+    console.log('[DEBUG] Chart function - violations.length:', violations.length)
 
-    if (!data.violations.length) {
+    if (!violations.length) {
       console.log('[DEBUG] No violations data, returning empty intervals with zero violations')
       return intervals // Return intervals with zero violations
     }
 
-    console.log('[DEBUG] Processing', data.violations.length, 'violations')
+    console.log('[DEBUG] Processing', violations.length, 'violations')
 
     // Aggregate violations into intervals
-    data.violations.forEach(violation => {
+    violations.forEach(violation => {
       try {
         const violationTime = parseISO(violation.timestamp)
         console.log('[DEBUG] Processing violation:', violation.id, 'actual time:', violationTime.toISOString())
@@ -979,46 +772,28 @@ export default function ConstraintDashboard() {
     const recent24h = getRecentViolations(24)
     const recent7d = getRecentViolations(7 * 24)
 
-    const totalConstraints = data?.constraints?.length || 0
-    const enabledConstraints = data?.constraints?.filter(c => c.enabled).length || 0
+    const totalConstraints = constraints?.length || 0
+    const enabledConstraints = constraints?.filter(c => c.enabled).length || 0
 
-    // IMPROVED COMPLIANCE ALGORITHM:
-    // Compliance should reflect constraint adherence over time, not just violation count
-    let complianceRate = 100 // Start with perfect compliance (percentage scale)
-
-    if (enabledConstraints > 0 && recent24h.length > 0) {
-      // Get unique violated constraints in the last 24h
-      const violatedConstraints = new Set(recent24h.map(v => v.constraint_id)).size
-
-      // Primary penalty: percentage of constraints that were violated (40% max impact)
-      const constraintPenalty = Math.min(40, (violatedConstraints / enabledConstraints) * 40)
-
-      // Volume penalty: extra violations beyond one per constraint (scaled down)
-      const excessViolations = Math.max(0, recent24h.length - violatedConstraints)
-      const volumePenalty = Math.min(20, excessViolations * 2) // Cap at 20% additional penalty
-
-      // Total penalty (constraint coverage + volume)
-      const totalPenalty = constraintPenalty + volumePenalty
-
-      complianceRate = Math.max(0, Math.round(100 - totalPenalty))
-    }
+    // Get unique group count from constraints
+    const groupCount = constraints.length > 0 ? new Set(constraints.map(c => c.groupId).filter(Boolean)).size : 0
 
     return {
       totalConstraints,
       enabledConstraints,
-      groupCount: data?.groups?.length || 0,
+      groupCount,
       recentViolations24h: recent24h.length,
       recentViolations7d: recent7d.length,
-      complianceRate: Math.max(0, Math.min(100, complianceRate)),
+      complianceRate: compliance, // Use Redux state compliance value
       // Add debugging info
       violatedConstraintsCount: recent24h.length > 0 ? new Set(recent24h.map(v => v.constraint_id)).size : 0
     }
   }
 
   // Debug state values before render decisions
-  console.log('[DEBUG] Render decision - loading:', loading, 'data:', !!data, 'error:', error, 'selectedProject:', selectedProject, 'projects.length:', projects.length)
+  console.log('[DEBUG] Render decision - loading:', loading, 'constraints.length:', constraints.length, 'error:', error, 'selectedProject:', selectedProject, 'projects.length:', projects.length)
 
-  if (loading && !data) {
+  if (loading && constraints.length === 0) {
     return (
       <div className="min-h-screen bg-background p-6">
         <div className="max-w-7xl mx-auto">
@@ -1163,7 +938,7 @@ export default function ConstraintDashboard() {
                   <Button
                     variant={timeRange === '24h' ? 'default' : 'ghost'}
                     size="sm"
-                    onClick={() => setTimeRange('24h')}
+                    onClick={() => dispatch(setTimeRange('24h'))}
                     className="h-7 px-2"
                   >
                     24h
@@ -1171,7 +946,7 @@ export default function ConstraintDashboard() {
                   <Button
                     variant={timeRange === '5d' ? 'default' : 'ghost'}
                     size="sm"
-                    onClick={() => setTimeRange('5d')}
+                    onClick={() => dispatch(setTimeRange('5d'))}
                     className="h-7 px-2"
                   >
                     5d
@@ -1179,7 +954,7 @@ export default function ConstraintDashboard() {
                   <Button
                     variant={timeRange === '1m' ? 'default' : 'ghost'}
                     size="sm"
-                    onClick={() => setTimeRange('1m')}
+                    onClick={() => dispatch(setTimeRange('1m'))}
                     className="h-7 px-2"
                   >
                     1m
@@ -1187,7 +962,7 @@ export default function ConstraintDashboard() {
                   <Button
                     variant={timeRange === '1y' ? 'default' : 'ghost'}
                     size="sm"
-                    onClick={() => setTimeRange('1y')}
+                    onClick={() => dispatch(setTimeRange('1y'))}
                     className="h-7 px-2"
                   >
                     1y
@@ -1458,18 +1233,28 @@ export default function ConstraintDashboard() {
             </div>
 
             <div className="space-y-3">
-              {data?.groups?.map((group) => {
-                const groupConstraints = data.constraints?.filter(c => c.groupId === group.id) || []
-                const stats = getGroupStats(group.id)
-                const isExpanded = expandedGroups.includes(group.id)
-                const groupToggleState = groupToggleStates[group.id] ?? (groupConstraints.length > 0 && groupConstraints.every(c => c.enabled))
-                const isToggling = togglingGroups.has(group.id)
+              {/* Get unique groups from constraints */}
+              {[...new Set(constraints.map(c => c.groupId).filter(Boolean))].map((groupId) => {
+                // Create a dummy group object since we only have constraints
+                const group = {
+                  id: groupId,
+                  name: groupId.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+                  description: `Constraints for ${groupId}`,
+                  icon: '🔧',
+                  color: 'blue',
+                  enabled: true
+                }
+                const groupConstraints = constraints?.filter(c => c.groupId === groupId) || []
+                const stats = getGroupStats(groupId)
+                const isExpanded = expandedGroups.includes(groupId)
+                const groupToggleState = groupToggleStates[groupId] ?? (groupConstraints.length > 0 && groupConstraints.every(c => c.enabled))
+                const isToggling = togglingGroups.has(groupId)
 
                 return (
-                  <div key={group.id} className="border border-border rounded-lg">
-                    <div 
+                  <div key={groupId} className="border border-border rounded-lg">
+                    <div
                       className="flex items-center justify-between p-3 cursor-pointer hover:bg-accent transition-colors"
-                      onClick={() => toggleAccordionGroup(group.id)}
+                      onClick={() => toggleAccordionGroup(groupId)}
                     >
                       <div className="flex items-center gap-3 flex-1">
                         <div className="text-lg">{group.icon}</div>
@@ -1491,7 +1276,7 @@ export default function ConstraintDashboard() {
                       <div className="flex items-center gap-2 ml-4" onClick={(e) => e.stopPropagation()}>
                         <Switch
                           checked={groupToggleState}
-                          onCheckedChange={(checked) => toggleConstraintGroup(group.id, checked)}
+                          onCheckedChange={(checked) => toggleConstraintGroup(groupId, checked)}
                           disabled={isToggling}
                           className="h-5 w-9"
                         />

@@ -1,20 +1,20 @@
 import { configureStore } from '@reduxjs/toolkit'
 import { useDispatch, useSelector, TypedUseSelectorHook } from 'react-redux'
 
-// Import slices (will be created next)
-import globalHealthReducer from './slices/globalHealthSlice'
+// Import slices
+// Removed globalHealthReducer - endpoints don't exist
 import projectsReducer from './slices/projectsSlice'
 import constraintsReducer from './slices/constraintsSlice'
 import apiCostReducer from './slices/apiCostSlice'
 import lslWindowReducer from './slices/lslWindowSlice'
 
-// Import middleware (will be created later)
+// Import middleware
 import { statusLineMiddleware } from './middleware/statusLineMiddleware'
 import { apiMiddleware } from './middleware/apiMiddleware'
 
 export const store = configureStore({
   reducer: {
-    globalHealth: globalHealthReducer,
+    // Removed globalHealth - API endpoints don't exist
     projects: projectsReducer,
     constraints: constraintsReducer,
     apiCost: apiCostReducer,
