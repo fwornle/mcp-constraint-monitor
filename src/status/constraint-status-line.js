@@ -146,21 +146,32 @@ class ConstraintStatusLine {
   async fetchFromService() {
     try {
       const { default: fetch } = await import('node-fetch');
-      
+
       // Detect current project from working directory or config
       const currentProject = this.getCurrentProject();
       const projectParam = currentProject ? `?project=${currentProject}&grouped=true` : '?grouped=true';
-      
-      const response = await fetch(`${this.config.serviceEndpoint}/api/violations?project=${currentProject}`, {
-        timeout: 2000
-      });
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+
+      // Fetch both violations and constraints in parallel (same as dashboard)
+      const [violationsResponse, constraintsResponse] = await Promise.all([
+        fetch(`${this.config.serviceEndpoint}/api/violations${projectParam}`, {
+          timeout: 2000
+        }),
+        fetch(`${this.config.serviceEndpoint}/api/constraints${projectParam}`, {
+          timeout: 2000
+        })
+      ]);
+
+      if (!violationsResponse.ok) {
+        throw new Error(`Violations API error: HTTP ${violationsResponse.status}`);
       }
-      
-      const data = await response.json();
-      return this.transformConstraintDataToStatus(data);
+      if (!constraintsResponse.ok) {
+        throw new Error(`Constraints API error: HTTP ${constraintsResponse.status}`);
+      }
+
+      const violationsData = await violationsResponse.json();
+      const constraintsData = await constraintsResponse.json();
+
+      return this.transformConstraintDataToStatus(violationsData, constraintsData);
     } catch (error) {
       throw new Error(`Service unavailable: ${error.message}`);
     }
@@ -314,7 +325,7 @@ class ConstraintStatusLine {
     return this.config.defaultProject || 'coding';
   }
 
-  transformConstraintDataToStatus(violationsData) {
+  transformConstraintDataToStatus(violationsData, constraintsData) {
     if (!violationsData || !violationsData.data) {
       return {
         compliance: 85, // Default 85% (not 8.5 on 0-10 scale)
@@ -324,35 +335,45 @@ class ConstraintStatusLine {
       };
     }
 
+    // Extract violations array (same as dashboard)
     const violations = Array.isArray(violationsData.data) ? violationsData.data : [];
 
-    // CENTRALIZED COMPLIANCE ALGORITHM: Same as dashboard - percentage based (0-100%)
-    // Start at 100% (perfect compliance)
+    // Extract and flatten constraints from grouped response (same as dashboard)
+    let constraints = [];
+    if (constraintsData && constraintsData.data && constraintsData.data.constraints) {
+      // Flatten constraints from all groups
+      constraints = constraintsData.data.constraints.flatMap((group) =>
+        group.constraints || []
+      );
+    }
+
+    // Calculate metrics (same as dashboard)
+    const now = Date.now();
+    const cutoff24h = now - (24 * 60 * 60 * 1000);
+    const cutoff7d = now - (7 * 24 * 60 * 60 * 1000);
+
+    const recent24hViolations = violations.filter(v =>
+      new Date(v.timestamp).getTime() > cutoff24h
+    );
+
+    const recent7dViolations = violations.filter(v =>
+      new Date(v.timestamp).getTime() > cutoff7d
+    );
+
+    const violatedConstraintsCount = new Set(
+      recent24hViolations.map(v => v.constraint_id)
+    ).size;
+
+    // Calculate compliance rate using the EXACT SAME algorithm as the dashboard
+    const enabledConstraints = constraints.filter(c => c.enabled).length;
     let complianceRate = 100;
 
-    if (violations.length > 0) {
-      // Get violations from different time windows
-      const recent24hViolations = this.getRecentViolationsFromData(violations, 24);
-      
-      if (recent24hViolations.length > 0) {
-        // Use same algorithm as dashboard: constraint coverage penalty + volume penalty
-        // Note: We don't have enabledConstraints count here, so use simplified version
-        
-        // Get unique violated constraints in the last 24h
-        const violatedConstraints = new Set(recent24hViolations.map(v => v.constraint_id)).size;
-        
-        // Simplified penalty calculation (since we don't have total constraints count)
-        // Primary penalty: base penalty for having violations (20% max)
-        const basePenalty = Math.min(20, violatedConstraints * 5); // 5% per unique constraint violated
-        
-        // Volume penalty: extra violations beyond unique constraints
-        const excessViolations = Math.max(0, recent24hViolations.length - violatedConstraints);
-        const volumePenalty = Math.min(20, excessViolations * 2); // 2% per excess violation, max 20%
-        
-        // Total penalty
-        const totalPenalty = basePenalty + volumePenalty;
-        complianceRate = Math.max(0, Math.round(100 - totalPenalty));
-      }
+    if (enabledConstraints > 0 && recent24hViolations.length > 0) {
+      const constraintPenalty = Math.min(40, (violatedConstraintsCount / enabledConstraints) * 40);
+      const excessViolations = Math.max(0, recent24hViolations.length - violatedConstraintsCount);
+      const volumePenalty = Math.min(20, excessViolations * 2);
+      const totalPenalty = constraintPenalty + volumePenalty;
+      complianceRate = Math.max(0, Math.round(100 - totalPenalty));
     }
 
     // Get recent violations for other metrics
