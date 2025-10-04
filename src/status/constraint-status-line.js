@@ -222,12 +222,7 @@ class ConstraintStatusLine {
       parts.push(`${violationIcon} ${data.violations}`);
     }
 
-    // Trajectory status
-    if (this.config.showTrajectory) {
-      const trajectoryIcon = this.getTrajectoryIcon(data.trajectory);
-      const trajectoryText = this.getTrajectoryText(data.trajectory);
-      parts.push(`${trajectoryIcon}${trajectoryText}`);
-    }
+    // Trajectory status removed for conciseness - shield symbol is sufficient
 
     const text = parts.join(' ');
     const color = this.getStatusColor(data);

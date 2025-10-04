@@ -960,13 +960,13 @@ export default function ConstraintDashboard() {
       4 // Minimum scale to match YAxis domain
     )
 
-    // Set "now" marker to 8% of the maximum y-axis value for good visibility
-    const nowMarkerHeight = Math.max(0.1, maxTotalViolations * 0.08)
+    // Set "now" marker to 4% of the maximum y-axis value for good visibility
+    const nowMarkerHeight = Math.max(0.1, maxTotalViolations * 0.04)
 
     intervals.forEach((interval, idx) => {
       if (interval.isCurrentInterval) {
         interval.nowMarker = nowMarkerHeight
-        console.log('[DEBUG] Set nowMarker for current interval', idx, 'to', nowMarkerHeight, '(8% of max', maxTotalViolations, ')')
+        console.log('[DEBUG] Set nowMarker for current interval', idx, 'to', nowMarkerHeight, '(4% of max', maxTotalViolations, ')')
       }
     })
 

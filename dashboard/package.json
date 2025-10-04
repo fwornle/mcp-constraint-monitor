@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "export $(grep '^CONSTRAINT_.*=' ../../../.env.ports | sed 's/#.*//' | xargs) && PORT=$CONSTRAINT_DASHBOARD_PORT next dev --turbopack",
-    "build": "next build --turbopack", 
+    "build": "next build --turbopack",
     "start": "export $(grep '^CONSTRAINT_.*=' ../../../.env.ports | sed 's/#.*//' | xargs) && PORT=$CONSTRAINT_DASHBOARD_PORT next start",
     "lint": "eslint"
   },
@@ -16,6 +16,8 @@
     "@radix-ui/react-separator": "^1.1.7",
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-switch": "^1.2.6",
+    "@reduxjs/toolkit": "^2.9.0",
+    "@types/react-redux": "^7.1.34",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
@@ -23,6 +25,7 @@
     "next": "15.5.4",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "react-redux": "^9.2.0",
     "recharts": "^3.2.1",
     "tailwind-merge": "^3.3.1"
   },
