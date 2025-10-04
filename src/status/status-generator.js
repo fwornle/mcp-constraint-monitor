@@ -70,10 +70,7 @@ export class StatusGenerator {
       parts.push(`🛡️ ${compliancePercent.toFixed(0)}%`);
     }
     
-    // Trajectory icon and text
-    const trajectoryIcon = this.getTrajectoryIcon(status.trajectory);
-    const trajectoryText = this.getTrajectoryText(status.trajectory);
-    parts.push(`${trajectoryIcon}${trajectoryText}`);
+    // Trajectory status removed for conciseness - shield symbol is sufficient
     
     // Active violations
     if (status.violations > 0) {

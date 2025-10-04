@@ -13,76 +13,94 @@ The MCP Constraint Monitor integrates seamlessly with Claude Code's status line 
 
 ## Status Line Format
 
-The constraint monitor displays information in this format:
+The constraint monitor appears as part of the comprehensive Claude Code status line:
 
 ```
-🛡️ 8.5 🔍EX ⚠️2
+[GCM✅] [C🟢] [🛡️ 85% 🔍EX] [🧠API✅]
 ```
 
-## Icon Reference
+The constraint monitor component is: `[🛡️ 85% 🔍EX]`
+
+## Status Line Components
 
 ### 🛡️ Compliance Score
 
-**Icon**: 🛡️ (Shield)  
+**Icon**: 🛡️ (Shield)
 **Meaning**: Constraint monitoring and compliance protection
 
+**Status Format**: `[🛡️ {percentage}% {trajectory}]`
+
 **Status Indicators:**
-- **🛡️8.5** - Compliance score (0-10 scale)
-- **🛡️⚠️** - Some violations detected (yellow)
+- **🛡️85%** - Compliance percentage (0-100% scale)
+- **🛡️⚠️** - Active violations detected (yellow)
 - **🛡️❌** - Constraint monitor offline (red)
 
-**Score Ranges:**
-- **9.0+** - Excellent compliance 🟢
-- **7.0-8.9** - Good compliance 🔵
-- **5.0-6.9** - Warning compliance 🟡
-- **<5.0** - Poor compliance 🔴
+**Compliance Ranges:**
+- **90%+** - Excellent compliance 🟢
+- **70-89%** - Good compliance 🔵
+- **50-69%** - Warning compliance 🟡
+- **<50%** - Poor compliance 🔴
+
+**Compliance Calculation Algorithm:**
+- Starts at 100% (perfect compliance)
+- Base penalty: 5% per unique constraint violated in 24h
+- Volume penalty: 2% per excess violation beyond unique constraints
+- Recent violations (1h) weighted more heavily
+- Minimum score: 0%
 
 ### 🔍 Trajectory Status
 
-**Purpose**: Shows your current development activity pattern
+**Purpose**: Shows current development activity pattern based on violation patterns
 
-**Icons & Meanings:**
-- **🔍 EX** - **Exploring**: Researching, understanding, analyzing
-- **📈 ON** - **On Track**: Focused implementation work
-- **📉 OFF** - **Off Track**: Diverged from planned work
-- **⚙️ IMP** - **Implementing**: Active coding/building
-- **✅ VER** - **Verifying**: Testing, validation, review
-- **🚫 BLK** - **Blocked**: Stuck, waiting, dependencies
+**Trajectory Detection Logic:**
+- **🔍EX** (Exploring): No violations in last hour, some in last 6h
+- **📈ON** (On Track): No violations in last 6 hours
+- **📉OFF** (Off Track): More than 3 violations in last hour
+- **⚙️IMP** (Implementing): Active development with managed violations
+- **✅VER** (Verifying): Testing phase, few violations
+- **🚫BLK** (Blocked): High violation rate indicating issues
+
+**Note**: Trajectory information was removed from the main status line display to reduce clutter. Only the shield symbol and compliance percentage are shown.
 
 ### ⚠️ Violation Count
 
-**Format**: ⚠️N (where N is the number of active violations)
+**Display**: Only shown when violations are present
+**Format**: `[🛡️ {percentage}% ⚠️ {count}]`
 
-**Meanings:**
-- **No violations** - Icon not shown
-- **⚠️1-5** - Minor violations (yellow)
-- **⚠️6+** - Multiple violations (red)
+**Violation States:**
+- **No violations** - Clean percentage display: `[🛡️ 85% 🔍EX]`
+- **With violations** - Warning display: `[🛡️ 72% ⚠️ 3]`
+- **Critical violations** - Multiple violations: `[🛡️ 45% ⚠️ 8]`
 
 ## Example Status Lines
 
 ### All Systems Operational
 ```
-🛡️ 9.2 📈ON 
+[GCM✅] [C🟢] [🛡️ 92% 🔍EX] [🧠API✅]
 ```
-- Excellent compliance (9.2/10)
-- On track with focused work
-- No active violations
+- Configuration manager operational
+- Core services healthy
+- Excellent compliance (92%)
+- Currently exploring/researching
+- Semantic analysis API operational
 
-### Warning State
+### Warning State with Violations
 ```
-🛡️ 6.8 🔍EX ⚠️3
+[GCM✅] [C🟡] [🛡️ 68% ⚠️ 3] [🧠API⚠️]
 ```
-- Low compliance (6.8/10) needs attention
-- Exploring/researching phase
-- 3 active violations
+- Configuration manager operational
+- Some core services degraded
+- Low compliance (68%) with 3 violations
+- Semantic analysis API degraded
 
 ### Critical Issues
 ```
-🛡️ ❌ 🚫BLK ⚠️8
+[GCM❌] [C🔴] [🛡️ ❌] [🧠API❌]
 ```
+- Configuration manager offline
+- Core services failed
 - Constraint monitor offline
-- Work is blocked
-- 8 active violations
+- Semantic analysis API offline
 
 ## Color Coding
 
@@ -113,31 +131,32 @@ The status line reflects real-time performance:
 - **Memory Usage**: System resource utilization
 - **Database Status**: SQLite, Qdrant, and Redis connectivity
 
-## Configuration
+## Integration Architecture
 
-Configure the status line in Claude Code:
+The constraint monitor integrates with Claude Code through a unified status line system:
 
-### Global Configuration
+### Main Status Line Configuration
 `~/.claude/settings.json`:
 ```json
 {
   "statusLine": {
     "type": "command",
-    "command": "mcp-constraint-monitor --status-line"
+    "command": "node /Users/q284340/Agentic/coding/scripts/combined-status-line-wrapper.js"
   }
 }
 ```
 
-### Project Configuration
-`.claude/settings.local.json`:
-```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "npx mcp-constraint-monitor --status-line"
-  }
-}
-```
+### Constraint Monitor API Integration
+The main status line calls the constraint monitor API:
+- **Endpoint**: `http://localhost:3031/api/violations`
+- **Method**: GET with project parameter
+- **Response**: JSON with violation data and metadata
+- **Timeout**: 2 seconds with graceful fallback
+
+### Service Dependencies
+- **MCP Constraint Monitor Service**: Must be running on port 3031
+- **Constraint API**: Provides real-time violation data
+- **Local Data Files**: Fallback when API unavailable
 
 ### Hook Configuration (Required for Real-Time)
 `.claude/settings.local.json` - **Required for real-time constraint enforcement**:
@@ -160,24 +179,39 @@ Configure the status line in Claude Code:
 }
 ```
 
-**⚠️ Important**: Without hook configuration, the constraint monitor operates in passive mode only. Real-time prevention requires both MCP server and hook configuration.
+**⚠️ Important**: The status line integration is separate from hook configuration. Status monitoring works independently of real-time prevention hooks.
+
+### Architecture Components
+- **Status Line Display**: Visual feedback in Claude Code
+- **Hook Prevention**: Real-time constraint enforcement
+- **API Service**: Data provider for both systems
+- **Dashboard**: Web interface for detailed monitoring
 
 ## Troubleshooting
 
-**No Status Line Appears:**
-1. Verify MCP server is running: `mcp-constraint-monitor --status`
-2. Check Claude Code MCP configuration
-3. Ensure status line is configured in settings
+**Constraint Component Shows [🛡️ ❌]:**
+1. Check constraint monitor API: `curl http://localhost:3031/api/health`
+2. Start constraint monitor service: `cd integrations/mcp-constraint-monitor && npm run api`
+3. Verify port availability: `lsof -i :3031`
+4. Check service logs: `cd integrations/mcp-constraint-monitor && npm run logs`
 
-**Status Shows Red/Offline:**
-1. Check if constraint monitor is running
-2. Verify database connections
-3. Check logs: `mcp-constraint-monitor --logs`
+**Inaccurate Compliance Percentages:**
+1. Review recent violations: `curl http://localhost:3031/api/violations?project=coding`
+2. Check constraint configuration files
+3. Verify time synchronization (violations are time-sensitive)
+4. Clear cache and restart service
 
-**Inaccurate Scores:**
-1. Review constraint configuration
-2. Check recent violations: `mcp-constraint-monitor --violations`
-3. Reset scoring: `mcp-constraint-monitor --reset-score`
+**Status Line Not Updating:**
+1. Verify main status line configuration in `~/.claude/settings.json`
+2. Test manually: `node scripts/combined-status-line-wrapper.js`
+3. Check script permissions: `ls -la scripts/combined-status-line*`
+4. Review Claude Code logs for errors
+
+**Component Integration Issues:**
+1. Ensure constraint monitor API is accessible from main status script
+2. Check network connectivity and timeouts
+3. Verify project detection (current directory context)
+4. Test individual component: `curl http://localhost:3031/api/violations?project=coding`
 
 ## Customization
 
@@ -210,6 +244,36 @@ statusLine:
   realTimeUpdates: true
 ```
 
+## Technical Implementation
+
+### API Integration
+The constraint monitor provides status data through RESTful APIs:
+
+```javascript
+// Called by main status line script
+const response = await fetch('http://localhost:3031/api/violations?project=coding');
+const data = await response.json();
+```
+
+### Data Processing
+1. **Violation Analysis**: Recent violations are analyzed for patterns
+2. **Compliance Calculation**: Percentage-based scoring algorithm
+3. **Trajectory Detection**: Activity pattern recognition
+4. **Status Formatting**: Integration with main status line format
+
+### Performance Characteristics
+- **API Response Time**: <200ms typical
+- **Cache Duration**: 5 seconds for violation data
+- **Update Frequency**: Every 5 seconds via Claude Code timer
+- **Failover**: Graceful degradation to cached data
+
+### Data Flow
+```
+Constraint Violations → JSON Storage → API Endpoint → Status Line → Claude Code Display
+        ↓                    ↓             ↓              ↓              ↓
+   Real-time Detection → File System → HTTP Response → Aggregation → Visual Feedback
+```
+
 ---
 
-The status line provides immediate visual feedback about your coding environment health, helping you maintain high code quality and stay aligned with project constraints.
+*The constraint monitor integration provides real-time visual feedback about coding compliance as part of Claude Code's comprehensive development environment monitoring system.*
