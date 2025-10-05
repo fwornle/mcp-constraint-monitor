@@ -109,9 +109,19 @@ export class ConstraintEngine {
       }
 
       try {
-        // Build regex flags - always include 'g' for global matching, plus any constraint-specific flags
-        const flags = 'g' + (constraint.flags || '');
-        const regex = new RegExp(constraint.pattern, flags);
+        // Extract inline flags from pattern (e.g., (?i) for case-insensitive)
+        let pattern = constraint.pattern;
+        let extractedFlags = '';
+
+        // Check for (?i) inline flag and extract it
+        if (pattern.startsWith('(?i)')) {
+          pattern = pattern.substring(4);
+          extractedFlags += 'i';
+        }
+
+        // Build regex flags - always include 'g' for global matching, plus any constraint-specific or extracted flags
+        const flags = 'g' + (constraint.flags || '') + extractedFlags;
+        const regex = new RegExp(pattern, flags);
         const matches = content.match(regex);
 
         logger.debug(`Testing constraint ${id}`, {

@@ -18,12 +18,15 @@ async function processToolHook() {
   try {
     // Read hook data from stdin (Claude Code format)
     let hookData = '';
-    if (process.stdin.isTTY === false) {
+    // Read stdin regardless of TTY status (isTTY can be undefined)
+    if (process.stdin.isTTY !== true) {
       const chunks = [];
       for await (const chunk of process.stdin) {
         chunks.push(chunk);
       }
-      hookData = Buffer.concat(chunks).toString('utf8').trim();
+      if (chunks.length > 0) {
+        hookData = Buffer.concat(chunks).toString('utf8').trim();
+      }
     }
 
     if (!hookData) {
