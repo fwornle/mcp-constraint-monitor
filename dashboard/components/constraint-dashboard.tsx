@@ -175,25 +175,9 @@ export default function ConstraintDashboard() {
     }
   }, [selectedProject, timeRange, dispatch])
 
-  // Gentle refresh every 60 seconds (reduced from 30)
-  useEffect(() => {
-    if (!selectedProject || selectedProject === 'current') return
-
-    const constraintInterval = setInterval(() => {
-      console.log('[DEBUG] Scheduled refresh for project:', selectedProject)
-      dispatch(fetchConstraintData(selectedProject))
-    }, 60000) // Refresh every 60 seconds
-
-    const projectInterval = setInterval(() => {
-      // Project list can refresh regardless of selected project
-      dispatch(fetchProjects())
-    }, 60000) // Refresh projects every minute
-
-    return () => {
-      clearInterval(constraintInterval)
-      clearInterval(projectInterval)
-    }
-  }, [selectedProject, dispatch]) // Project-aware dependency
+  // Removed automatic polling - users can manually refresh when needed
+  // If continuous monitoring is required, enable middleware auto-refresh via config
+  // This prevents constant unnecessary API calls and UI reloads
 
 
 

@@ -20,13 +20,13 @@ interface StatusLineConfig {
 }
 
 const defaultConfig: StatusLineConfig = {
-  enableAutoRefresh: true,
+  enableAutoRefresh: false, // Disabled by default - users can enable monitoring mode if needed
   intervals: {
-    constraints: 5000,    // 5 seconds
-    globalHealth: 10000,  // 10 seconds
-    projects: 30000,      // 30 seconds
-    apiCost: 15000,       // 15 seconds
-    lslWindow: 5000       // 5 seconds
+    constraints: 120000,   // 120 seconds (2 minutes) - only when monitoring enabled
+    globalHealth: 60000,   // 60 seconds (1 minute) - health checks when monitoring enabled
+    projects: 180000,      // 180 seconds (3 minutes) - projects list rarely changes
+    apiCost: 300000,       // 300 seconds (5 minutes) - cost data doesn't change frequently
+    lslWindow: 120000      // 120 seconds (2 minutes) - LSL status when monitoring enabled
   },
   retryAttempts: 3,
   retryDelay: 2000
