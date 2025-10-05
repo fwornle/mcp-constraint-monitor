@@ -233,6 +233,9 @@ class RealTimeConstraintEnforcer {
       }
 
       // Add each violation with full context
+      // Use project from context, or detect from working directory
+      const projectName = context.project || this.getProjectName();
+
       for (const violation of violations) {
         const loggedViolation = {
           id: `${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
@@ -242,9 +245,9 @@ class RealTimeConstraintEnforcer {
           message: violation.message,
           severity: violation.severity,
           tool: type === 'prompt' ? 'live-prompt-hook' : 'live-tool-hook',
-          context: 'coding',
-          project: 'coding',
-          repository: 'coding',
+          context: projectName,
+          project: projectName,
+          repository: projectName,
           source: 'main',
           file_path: context.filePath || 'live-constraint-test',
           matches: violation.matches || 1,
@@ -253,7 +256,7 @@ class RealTimeConstraintEnforcer {
         };
 
         existingData.violations.push(loggedViolation);
-        console.log(`📝 LOGGED TO DASHBOARD: ${violation.constraint_id} (${violation.severity})`);
+        console.log(`📝 LOGGED TO DASHBOARD [${projectName}]: ${violation.constraint_id} (${violation.severity})`);
       }
 
       // Write back to storage

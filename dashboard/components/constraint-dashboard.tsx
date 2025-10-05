@@ -45,7 +45,7 @@ import {
   selectConstraintsLoading,
   selectConstraintsError
 } from '@/store/slices/constraintsSlice'
-import { selectProjects, selectCurrentProject, fetchProjects } from '@/store/slices/projectsSlice'
+import { selectProjects, selectCurrentProject, fetchProjects, setCurrentProject } from '@/store/slices/projectsSlice'
 
 interface Constraint {
   id: string
@@ -157,6 +157,14 @@ export default function ConstraintDashboard() {
     console.log('[DEBUG] Initial mount - fetching projects')
     dispatch(fetchProjects())
   }, [dispatch])
+
+  // Sync selectedProject to Redux currentProject
+  useEffect(() => {
+    if (selectedProject && selectedProject !== 'current') {
+      console.log('[DEBUG] Syncing selectedProject to Redux:', selectedProject)
+      dispatch(setCurrentProject(selectedProject))
+    }
+  }, [selectedProject, dispatch])
 
   // Single useEffect for constraint data when project or timeRange changes
   useEffect(() => {

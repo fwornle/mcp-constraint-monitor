@@ -55,6 +55,33 @@ async function processToolHook() {
       process.exit(0);
     }
 
+    // Detect project from file path in tool parameters
+    const detectProjectFromFilePath = (toolCall) => {
+      // Extract file path from various tool parameters
+      const filePath = toolCall.parameters?.file_path ||
+                      toolCall.parameters?.path ||
+                      toolCall.parameters?.filePath ||
+                      toolCall.input?.file_path;
+
+      if (!filePath) {
+        return 'coding'; // Default to coding project
+      }
+
+      // Check which project the file belongs to based on path
+      if (filePath.includes('/curriculum-alignment/')) {
+        return 'curriculum-alignment';
+      } else if (filePath.includes('/nano-degree/')) {
+        return 'nano-degree';
+      } else if (filePath.includes('/coding/')) {
+        return 'coding';
+      }
+
+      // If no match, try to get project from cwd
+      return 'coding'; // Default
+    };
+
+    const detectedProject = detectProjectFromFilePath(toolCall);
+
     // Import and use the constraint enforcer
     const { preToolHook } = await import('./real-time-constraint-hook.js');
 
@@ -63,7 +90,8 @@ async function processToolHook() {
       source: 'claude-code-tool-hook',
       workingDirectory: process.cwd(),
       sessionId: toolData.sessionId || 'unknown',
-      toolName: toolCall.name
+      toolName: toolCall.name,
+      project: detectedProject  // Add detected project to context
     };
 
     // Check constraints

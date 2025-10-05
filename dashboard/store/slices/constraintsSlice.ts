@@ -67,13 +67,21 @@ const initialState: ConstraintsState = {
 export const fetchConstraintData = createAsyncThunk(
   'constraints/fetchData',
   async (project?: string) => {
+    console.log('[THUNK] fetchConstraintData called with project:', project)
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3031'
     const projectParam = project ? `?project=${project}&grouped=true` : '?grouped=true'
 
+    const violationsUrl = `${baseUrl}/api/violations${projectParam}`
+    const constraintsUrl = `${baseUrl}/api/constraints${projectParam}`
+    console.log('[THUNK] Fetching from URLs:', {
+      violations: violationsUrl,
+      constraints: constraintsUrl
+    })
+
     // Fetch both violations and constraints in parallel
     const [violationsResponse, constraintsResponse] = await Promise.all([
-      fetch(`${baseUrl}/api/violations${projectParam}`),
-      fetch(`${baseUrl}/api/constraints${projectParam}`)
+      fetch(violationsUrl),
+      fetch(constraintsUrl)
     ])
 
     if (!violationsResponse.ok) {
@@ -85,6 +93,12 @@ export const fetchConstraintData = createAsyncThunk(
 
     const violationsData = await violationsResponse.json()
     const constraintsData = await constraintsResponse.json()
+
+    console.log('[THUNK] API responses:', {
+      violationsStatus: violationsData.status,
+      violationsCount: violationsData.data?.length || violationsData.length || 0,
+      constraintsStatus: constraintsData.status
+    })
 
     // Combine the data in the format expected by the reducer
     const violations = violationsData.data || violationsData || []
@@ -189,13 +203,25 @@ const constraintsSlice = createSlice({
         state.loading = false
         state.lastUpdate = Date.now()
 
-        const data = action.payload.data || action.payload
+        console.log('[REDUX] fetchConstraintData.fulfilled - action.payload:', {
+          hasData: !!action.payload.data,
+          hasViolations: !!action.payload.violations,
+          hasConstraints: !!action.payload.constraints,
+          violationsLength: action.payload.violations?.length,
+          constraintsLength: action.payload.constraints?.length
+        })
 
-        if (data.violations) {
-          state.violations = data.violations
+        // The thunk returns { violations, constraints } directly
+        const violations = action.payload.violations
+        const constraints = action.payload.constraints
+
+        if (violations !== undefined) {
+          console.log('[REDUX] Updating violations state to:', violations.length, 'violations')
+          state.violations = violations
         }
-        if (data.constraints) {
-          state.constraints = data.constraints
+        if (constraints !== undefined) {
+          console.log('[REDUX] Updating constraints state to:', constraints.length, 'constraints')
+          state.constraints = constraints
         }
 
         // Calculate metrics
