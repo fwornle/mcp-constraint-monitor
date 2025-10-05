@@ -201,18 +201,32 @@ const projectsSlice = createSlice({
         state.loading = false
         state.lastUpdate = Date.now()
 
-        const data = action.payload.data || action.payload
+        // API returns { status: "success", data: [...] } where data is the projects array
+        const apiResponse = action.payload
+        const projectsArray = apiResponse.data || []
 
-        if (data.projects && Array.isArray(data.projects)) {
-          state.projects = data.projects
-          state.totalProjects = data.projects.length
-          state.activeProjects = data.projects.filter((p: ProjectInfo) => p.status === 'active').length
-          state.healthyProjects = data.projects.filter((p: ProjectInfo) => p.health === 'healthy').length
-          state.projectsWithViolations = data.projects.filter((p: ProjectInfo) => p.violationCount > 0).length
+        if (Array.isArray(projectsArray) && projectsArray.length > 0) {
+          // Transform API format to internal ProjectInfo format
+          state.projects = projectsArray.map((p: any) => ({
+            name: p.name,
+            displayName: p.name,
+            path: p.path,
+            active: p.status === 'active',
+            lastActivity: p.lastActivity || new Date().toISOString(),
+            status: p.status || 'unknown',
+            health: 'healthy',  // Default - will be updated by health check
+            violationCount: 0,  // Default - will be updated by violations API
+            complianceScore: 100,  // Default
+            lastCheck: new Date().toISOString()
+          }))
+          state.totalProjects = state.projects.length
+          state.activeProjects = state.projects.filter(p => p.status === 'active').length
+          state.healthyProjects = state.projects.length  // All default to healthy
+          state.projectsWithViolations = 0  // Will be updated after loading violations
         }
 
-        if (data.currentProject) {
-          state.currentProject = data.currentProject
+        if (apiResponse.currentProject) {
+          state.currentProject = apiResponse.currentProject
         }
       })
       .addCase(fetchProjects.rejected, (state, action) => {
