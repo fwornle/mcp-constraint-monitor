@@ -1,7 +1,7 @@
 # Comprehensive Constraint System Test Report
 
-**Generated:** 10/3/2025, 7:46:30 PM
-**Session ID:** comprehensive_test_1759513590457
+**Generated:** 10/6/2025, 2:40:56 PM
+**Session ID:** comprehensive_test_1759754456287
 
 ## Executive Summary
 
@@ -265,68 +265,14 @@ This comprehensive test validates ALL 18 enabled constraints using real hook fun
 **Status:** Allowed without detection
 
 
-## Real Hook Workflow Evidence
+## Live Session Log (LSL) Evidence
 
-**DOCUMENTED: Actual three-step constraint enforcement process**
 
-Based on test execution output, here is the documented workflow you requested:
-
-### Step 1: Constraint Detected in Hook Function
-**Evidence from test output:**
-```
-📝 LOGGED TO DASHBOARD: proper-error-handling (error)
-📝 LOGGED TO DASHBOARD: no-hardcoded-secrets (critical)
-📝 LOGGED TO DASHBOARD: no-eval-usage (critical)
-```
-
-The hook functions (`prePromptHook` and `preToolHook`) successfully detect violations by calling the constraint engine and identifying pattern matches in real-time.
-
-### Step 2: Execution Interrupted and Error Message Issued
-**Evidence from test output:**
-```
-🛑 BLOCKED: 🚫 **CONSTRAINT VIOLATION DETECTED - EXECUTION BLOCKED**
-
-The following constraint violations must be corrected before proceeding:
-
-**1. ERROR: Empty catch blocks should be avoided**
-   💡 Suggestion: Add proper error handling or at minimum log the error
-   🔍 Pattern: `catch\s*\([^)]*\)\s*\{\s*\}`
-
-Please modify your request to comply with these constraints and try again.
-📊 View detailed constraint information: http://localhost:3030
-```
-
-The hook functions throw errors with detailed violation messages, preventing execution and providing specific guidance for correction.
-
-### Step 3: Claude Would Resume with Corrected Input
-**Evidence from system design:**
-In real Claude Code usage, after receiving the constraint violation error, Claude would:
-1. Analyze the specific violation pattern and suggestion
-2. Modify the original request to comply with constraints
-3. Retry the operation with corrected input
-4. Successfully proceed without violations
-
-**Real Example Workflow:**
-1. **Attempt**: Write code with `catch() {}` (empty catch block)
-2. **Detection**: `proper-error-handling` constraint triggered
-3. **Interruption**: Hook throws error blocking execution
-4. **Correction**: Claude would rewrite with `catch(error) { console.error(error); }`
-5. **Success**: Corrected code passes constraint validation
-
-### Confirmed Hook Function Behavior
-
-**From `real-time-constraint-hook.js`:**
-```javascript
-export async function prePromptHook(prompt, context = {}) {
-  const result = await enforcer.enforcePromptConstraints(prompt, context);
-  if (!result.allowed) {
-    throw new Error(result.message); // Real blocking mechanism
-  }
-  return { continue: true, compliance: result.compliance };
-}
-```
-
-**Verification**: 8/18 constraints successfully detected violations and blocked execution with specific error messages, confirming the three-step prevention workflow is operational.
+**No LSL evidence captured in this test session.**
+This may indicate:
+1. Constraints are detecting but not logging to LSL
+2. LSL monitoring needs adjustment
+3. Test execution too fast for LSL capture
 
 
 ## Constraint Pattern Analysis
@@ -424,6 +370,6 @@ The constraint system demonstrates 8/18 (44%) constraint detection capability wi
 
 ---
 
-**Test completed at:** 10/3/2025, 7:46:40 PM
+**Test completed at:** 10/6/2025, 2:41:05 PM
 **Real detections:** 8/18 constraints
 **Evidence authenticity:** ✅ Real hook functions + LSL monitoring
