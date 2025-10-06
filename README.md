@@ -26,10 +26,38 @@ Add intelligent code quality monitoring to any Claude Code project with zero con
 
 ## 🚀 Quick Start
 
-### Installation
+### Installation Options
+
+**Option 1: Standalone Installation (Recommended for standalone use)**
+
+Clone and install with hooks configured automatically:
 
 ```bash
-# Via npm (recommended)
+git clone https://github.com/fwornle/mcp-server-constraint-monitor.git
+cd mcp-server-constraint-monitor
+./install.sh
+```
+
+This will:
+- ✅ Install all dependencies (main + dashboard with Redux)
+- ✅ Configure Claude Code hooks automatically
+- ✅ Set up `.claude/settings.local.json` with constraint enforcement
+
+**Option 2: Dependencies Only (For integration into larger projects)**
+
+```bash
+./install.sh --skip-hooks
+```
+
+Use this when:
+- You're integrating into a larger project (like `coding` repo)
+- The parent project manages hook configuration
+- You only need dependency installation
+
+**Option 3: NPM Global Install**
+
+```bash
+# Via npm (for CLI usage)
 npm install -g mcp-constraint-monitor
 
 # Or use npx (no installation)
