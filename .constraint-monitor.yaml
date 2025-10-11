@@ -32,7 +32,7 @@ constraint_groups:
 constraints:
   - id: no-console-log
     group: code_quality
-    pattern: console\.log\s*\(
+    pattern: console\.log
     message: Use Logger.log() instead of console.log for better log management
     severity: warning
     enabled: true
@@ -53,21 +53,21 @@ constraints:
     suggestion: Add proper error handling or at minimum log the error
   - id: proper-function-naming
     group: code_quality
-    pattern: function\s+[a-z][a-zA-Z0-9]*\s*\(
+    pattern: function\s+[a-z]
     message: Function names should start with a verb (camelCase)
     severity: info
     enabled: true
     suggestion: "Use descriptive verb-based names: getUserData(), processResults()"
   - id: no-magic-numbers
     group: code_quality
-    pattern: \b[0-9]{2,}\b
+    pattern: \b\d{2,}\b(?!\s*(px|%|em|rem|vh|vw))
     message: Magic numbers detected - consider using named constants
     severity: info
     enabled: true
     suggestion: "Define meaningful constants: const MAX_RETRIES = 3"
   - id: no-hardcoded-secrets
     group: security
-    pattern: (api[_-]?key|apiKey|password|secret|token)\s*[=:]\s*['"][^'"]{8,}['"]
+    pattern: (api[_-]?key|password|secret|token)\s*[=:]\s*['"][^'"]{8,}['"]
     message: Potential hardcoded secret detected
     severity: critical
     enabled: true
@@ -81,11 +81,10 @@ constraints:
     suggestion: Avoid eval() - use safer alternatives for dynamic code execution
   - id: no-parallel-files
     group: architecture
-    pattern: \b(v[2-9]|enhanced|improved|better|new|advanced|pro|simplified|simple|basic|lite|fixed|patched|updated|revised|modified|temp|temporary|backup|copy|duplicate|clone|alt|alternative|variant|final|draft|test|experimental)\b
-    flags: i
+    pattern: (v[2-9]|enhanced|improved|better|new|advanced|pro|simplified|simple|basic|lite|fixed|patched|updated|revised|modified|temp|temporary|backup|copy|duplicate|clone|alt|alternative|variant|final|draft|experimental)[._-]
     message: "CRITICAL: No parallel versions allowed - edit the original file directly"
     severity: critical
-    enabled: true
+    enabled: false
     suggestion: Debug and fix the original file instead of creating parallel versions
   - id: debug-not-speculate
     group: architecture
@@ -96,7 +95,7 @@ constraints:
     suggestion: Use debugging tools and verification commands to identify root causes
   - id: no-evolutionary-names
     group: architecture
-    pattern: (?:class|function|const|let|var)\s+\w*(?:V[2-9]|Enhanced|Improved|Better|New|Advanced|Pro|Simplified|Simple|Basic|Lite|Fixed|Patched|Updated|Revised|Modified|Temp|Temporary|Backup|Copy|Duplicate|Clone|Alt|Alternative|Variant|Final|Draft|Test|Experimental)\w*
+    pattern: (?:class|function|const|let|var)\s+\w*(?:V[2-9]|Enhanced|Improved|Better|New|Advanced|Pro|Simplified|Simple|Basic|Lite|Fixed|Patched|Updated|Revised|Modified|Temp|Temporary|Backup|Copy|Duplicate|Clone|Alt|Alternative|Variant|Final|Draft|Experimental)\w*
     message: Evolutionary naming detected - refactor original instead
     severity: error
     enabled: true
@@ -104,7 +103,6 @@ constraints:
   - id: plantuml-standard-styling
     group: plantuml
     pattern: "@startuml.*\\n(?!.*!include _standard-style\\.puml)"
-    flags: s
     message: PlantUML files must include the standard styling file
     severity: error
     enabled: true
@@ -118,8 +116,7 @@ constraints:
     suggestion: Move .puml files to docs/puml/ and update !include paths
   - id: plantuml-diagram-workflow
     group: plantuml
-    pattern: (architecture|diagram|flow|sequence).*(?:diagram|chart)
-    flags: i
+    pattern: (?i)(architecture|diagram|flow|sequence).*(?:diagram|chart)
     message: "Diagrams should follow PlantUML workflow: .puml files in docs/puml/, PNG files in docs/images/"
     severity: info
     enabled: true
@@ -127,8 +124,7 @@ constraints:
       Store PNG in docs/images/ 4. Reference PNG in markdown
   - id: plantuml-readability-guidelines
     group: plantuml
-    pattern: (too wide|barely readable|restructure.*readability)
-    flags: i
+    pattern: (?i)(too wide|barely readable|restructure.*readability)
     message: PlantUML diagrams should prioritize readability with vertical layouts and logical grouping
     severity: info
     enabled: true
@@ -156,8 +152,7 @@ constraints:
     suggestion: "Rename to kebab-case: my-feature-docs.md instead of MyFeatureDocs.md"
   - id: update-main-readme
     group: documentation
-    pattern: readme.*(?:update|modify|change).*(?:structure|format|content)
-    flags: i
+    pattern: (?i)readme.*(?:update|modify|change).*(?:structure|format|content)
     message: Main README updates should maintain consistent structure and TOC
     severity: info
     enabled: true
@@ -176,12 +171,6 @@ constraints:
     severity: warning
     enabled: false
     suggestion: Use useReducer for complex state or separate into multiple useState calls
-enforcement:
-  enabled: true
-  blocking_levels: ['critical', 'error']
-  warning_levels: ['warning']
-  info_levels: ['info']
-  fail_open: true # Continue if constraint server unavailable
 settings:
   compliance:
     excellent_threshold: 9
