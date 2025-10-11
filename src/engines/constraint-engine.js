@@ -1,6 +1,7 @@
 import { logger } from '../utils/logger.js';
 import { QdrantDatabase } from '../databases/qdrant-client.js';
 import { DuckDBAnalytics } from '../databases/duckdb-client.js';
+import { SemanticValidator } from './semantic-validator.js';
 import fs from 'fs';
 import path from 'path';
 
@@ -12,6 +13,7 @@ export class ConstraintEngine {
     this.qdrant = null;
     this.analytics = null;
     this.fileWatcher = null;
+    this.semanticValidator = null; // Initialized lazily to avoid startup overhead
   }
 
   async initialize() {
@@ -90,6 +92,27 @@ export class ConstraintEngine {
     }
   }
 
+  /**
+   * Lazy initialization of semantic validator
+   * Only creates instance when semantic validation is actually needed
+   */
+  ensureSemanticValidator() {
+    if (!this.semanticValidator) {
+      try {
+        this.semanticValidator = new SemanticValidator({
+          // Can be configured via environment or config
+          cacheMaxSize: 1000,
+          cacheTTL: 3600000 // 1 hour
+        });
+        logger.info('Semantic validator initialized');
+      } catch (error) {
+        logger.warn('Failed to initialize semantic validator:', error);
+        this.semanticValidator = null;
+      }
+    }
+    return this.semanticValidator;
+  }
+
   async checkConstraints(options) {
     const { content, type, filePath } = options;
     const violations = [];
@@ -131,26 +154,74 @@ export class ConstraintEngine {
         });
 
         if (matches) {
-          const violation = {
-            constraint_id: id,
-            message: constraint.message,
-            severity: constraint.severity,
-            matches: matches.length,
-            pattern: constraint.pattern,
-            file_path: filePath,
-            detected_at: new Date().toISOString()
-          };
+          // Prepare potential violation
+          let isConfirmedViolation = true;
+          let semanticAnalysis = null;
 
-          violations.push(violation);
+          // Level 2: Semantic validation (if enabled for this constraint)
+          if (constraint.semantic_validation) {
+            const validator = this.ensureSemanticValidator();
 
-          logger.info(`Violation detected: ${id}`, {
-            matches: matches.length,
-            severity: constraint.severity
-          });
+            if (validator) {
+              try {
+                logger.debug(`Running semantic validation for ${id}`);
 
-          // Add suggestion based on constraint
-          if (constraint.suggestion) {
-            suggestions.push(constraint.suggestion);
+                semanticAnalysis = await validator.validateConstraint(
+                  id,
+                  { matches },
+                  {
+                    content,
+                    filePath,
+                    constraint
+                  }
+                );
+
+                // If semantic validator says it's not a violation, skip it
+                if (!semanticAnalysis.isViolation) {
+                  isConfirmedViolation = false;
+                  logger.info(`Semantic validation overrode regex match for ${id}`, {
+                    confidence: semanticAnalysis.confidence,
+                    reasoning: semanticAnalysis.reasoning
+                  });
+                }
+              } catch (error) {
+                logger.warn(`Semantic validation failed for ${id}, falling back to regex:`, error);
+                // On error, trust the regex match
+                isConfirmedViolation = true;
+              }
+            }
+          }
+
+          // Only add to violations if confirmed (either by regex-only or semantic validation)
+          if (isConfirmedViolation) {
+            const violation = {
+              constraint_id: id,
+              message: constraint.message,
+              severity: constraint.severity,
+              matches: matches.length,
+              pattern: constraint.pattern,
+              file_path: filePath,
+              detected_at: new Date().toISOString(),
+              // Add semantic analysis metadata if available
+              ...(semanticAnalysis && {
+                semantic_confidence: semanticAnalysis.confidence,
+                semantic_reasoning: semanticAnalysis.reasoning
+              })
+            };
+
+            violations.push(violation);
+
+            logger.info(`Violation confirmed: ${id}`, {
+              matches: matches.length,
+              severity: constraint.severity,
+              semanticValidation: constraint.semantic_validation || false,
+              confidence: semanticAnalysis?.confidence
+            });
+
+            // Add suggestion based on constraint
+            if (constraint.suggestion) {
+              suggestions.push(constraint.suggestion);
+            }
           }
         }
       } catch (error) {
