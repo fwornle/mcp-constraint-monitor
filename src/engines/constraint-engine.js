@@ -115,7 +115,6 @@ export class ConstraintEngine {
 
   async checkConstraints(options) {
     const { content, type, filePath } = options;
-    const violations = [];
     const suggestions = [];
 
     // Debug logging
@@ -125,10 +124,11 @@ export class ConstraintEngine {
       constraintIds: Array.from(this.constraints.keys())
     });
 
-    for (const [id, constraint] of this.constraints) {
+    // Check all constraints in parallel for maximum performance
+    const constraintChecks = Array.from(this.constraints.entries()).map(async ([id, constraint]) => {
       if (!constraint.enabled) {
         logger.debug(`Skipping disabled constraint: ${id}`);
-        continue;
+        return null;
       }
 
       try {
@@ -192,7 +192,7 @@ export class ConstraintEngine {
             }
           }
 
-          // Only add to violations if confirmed (either by regex-only or semantic validation)
+          // Only return violation if confirmed (either by regex-only or semantic validation)
           if (isConfirmedViolation) {
             const violation = {
               constraint_id: id,
@@ -209,8 +209,6 @@ export class ConstraintEngine {
               })
             };
 
-            violations.push(violation);
-
             logger.info(`Violation confirmed: ${id}`, {
               matches: matches.length,
               severity: constraint.severity,
@@ -218,27 +216,40 @@ export class ConstraintEngine {
               confidence: semanticAnalysis?.confidence
             });
 
-            // Add suggestion based on constraint
+            // Collect suggestion if available
             if (constraint.suggestion) {
               suggestions.push(constraint.suggestion);
             }
+
+            return violation;
           }
         }
+
+        return null;
       } catch (error) {
         logger.error(`Error checking constraint ${id}:`, error);
+        return null;
       }
-    }
+    });
+
+    // Wait for all constraint checks to complete in parallel
+    const results = await Promise.allSettled(constraintChecks);
+
+    // Extract violations from settled promises (filter out nulls and rejected promises)
+    const violations = results
+      .filter(result => result.status === 'fulfilled' && result.value !== null)
+      .map(result => result.value);
 
     // Calculate compliance score
     const totalConstraints = this.constraints.size;
     const violatedConstraints = violations.length;
-    const compliance = totalConstraints > 0 ? 
+    const compliance = totalConstraints > 0 ?
       ((totalConstraints - violatedConstraints) / totalConstraints) * 10 : 10;
 
     // Assess risk level
     const criticalViolations = violations.filter(v => v.severity === 'critical').length;
     const errorViolations = violations.filter(v => v.severity === 'error').length;
-    
+
     let risk = 'low';
     if (criticalViolations > 0) risk = 'critical';
     else if (errorViolations > 2) risk = 'high';

@@ -143,6 +143,33 @@ The following constraints have semantic validation enabled:
 | Semantic Validation (cache miss) | 50-200ms | Actual LLM call |
 | End-to-end (typical) | 5-50ms | With high cache hit rate |
 
+### Parallel Execution
+
+All constraint checks execute **in parallel** for maximum performance:
+
+**Sequential (old)**:
+- Each constraint checked one at a time
+- 10 constraints × 2ms (regex) = 20ms
+- 3 semantic validations × 100ms = 300ms
+- **Total: 320ms**
+
+**Parallel (current)**:
+- All constraints checked simultaneously
+- max(2ms) for all regex checks
+- max(100ms) for all semantic validations
+- **Total: ~102ms (3x+ speedup)**
+
+**Implementation**: Uses `Promise.allSettled` to:
+- Execute all regex checks in parallel
+- Execute all semantic validation calls in parallel
+- Handle failures gracefully without blocking other checks
+- Maintain fault tolerance and error handling
+
+This parallelization is particularly beneficial when:
+- Multiple constraints have semantic validation enabled
+- Content matches several constraints simultaneously
+- Network latency affects LLM API calls
+
 ### Cost Analysis
 
 **Per Check**:
@@ -216,27 +243,43 @@ Located in `src/engines/constraint-engine.js`:
 
 ```javascript
 async checkConstraints(options) {
-  for (const [id, constraint] of this.constraints) {
-    // Level 1: Regex
-    const matches = content.match(regex);
-    if (!matches) continue;
+  // Check all constraints in parallel for maximum performance
+  const constraintChecks = Array.from(this.constraints.entries()).map(async ([id, constraint]) => {
+    if (!constraint.enabled) return null;
 
-    // Level 2: Semantic (if enabled)
-    if (constraint.semantic_validation) {
-      const validator = this.ensureSemanticValidator();
-      const semanticResult = await validator.validateConstraint(
-        id, { matches }, { content, filePath, constraint }
-      );
+    try {
+      // Level 1: Regex
+      const matches = content.match(regex);
+      if (!matches) return null;
 
-      // Semantic override
-      if (!semanticResult.isViolation) {
-        continue; // Skip - false positive
+      // Level 2: Semantic (if enabled)
+      if (constraint.semantic_validation) {
+        const validator = this.ensureSemanticValidator();
+        const semanticResult = await validator.validateConstraint(
+          id, { matches }, { content, filePath, constraint }
+        );
+
+        // Semantic override
+        if (!semanticResult.isViolation) {
+          return null; // Skip - false positive
+        }
       }
-    }
 
-    // Confirmed violation
-    violations.push({ /* ... */ });
-  }
+      // Confirmed violation
+      return { constraint_id: id, /* ... */ };
+    } catch (error) {
+      logger.error(`Error checking constraint ${id}:`, error);
+      return null;
+    }
+  });
+
+  // Wait for all constraint checks to complete in parallel
+  const results = await Promise.allSettled(constraintChecks);
+
+  // Extract violations from settled promises
+  const violations = results
+    .filter(result => result.status === 'fulfilled' && result.value !== null)
+    .map(result => result.value);
 }
 ```
 

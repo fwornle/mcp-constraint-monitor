@@ -328,6 +328,7 @@ The semantic constraint detection system has been successfully implemented with 
 
 2. **ConstraintEngine Integration** (`src/engines/constraint-engine.js`)
    - Two-level detection flow: regex pre-filter → semantic validation
+   - **Parallel constraint execution** using `Promise.allSettled` for 3x+ speedup
    - Lazy initialization to minimize startup overhead
    - Graceful fallback to regex-only on semantic service failures
 
