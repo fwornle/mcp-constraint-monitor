@@ -308,7 +308,43 @@ async checkConstraint(constraint, content, filePath) {
 
 ---
 
-**Status**: Design Phase
-**Next Step**: Implement SemanticDetector service
+**Status**: ✅ IMPLEMENTED
+**Implementation Date**: 2025-10-12
+**Commit**: `238bf7f` (submodule), `67850cf` (main)
 **Owner**: Constraint Monitoring Team
-**Last Updated**: 2025-10-11
+**Last Updated**: 2025-10-12
+
+## Implementation Summary
+
+The semantic constraint detection system has been successfully implemented with the following components:
+
+### Deployed Components
+
+1. **SemanticValidator** (`src/engines/semantic-validator.js`)
+   - Multi-provider support: Groq (llama-3.3-70b, qwen-2.5-32b), Anthropic (Claude Haiku), Gemini (Flash)
+   - LRU caching with 1-hour TTL
+   - Circuit breaker pattern for fault tolerance
+   - Configurable model routing per constraint
+
+2. **ConstraintEngine Integration** (`src/engines/constraint-engine.js`)
+   - Two-level detection flow: regex pre-filter → semantic validation
+   - Lazy initialization to minimize startup overhead
+   - Graceful fallback to regex-only on semantic service failures
+
+3. **Configuration** (`.constraint-monitor.yaml`)
+   - Added `semantic_validation: true` flag for key constraints
+   - Enabled for: `no-evolutionary-names`, `no-hardcoded-secrets`, `debug-not-speculate`
+
+### Current Status
+
+- ✅ Infrastructure deployed
+- ✅ Pilot constraints enabled
+- ⏳ Monitoring performance metrics
+- ⏳ Collecting false positive reduction data
+
+### Next Steps
+
+1. Monitor latency and accuracy metrics in production
+2. Gradually enable semantic validation for additional constraints
+3. Fine-tune model selection and prompts based on real-world performance
+4. Implement dashboard metrics for semantic validation statistics

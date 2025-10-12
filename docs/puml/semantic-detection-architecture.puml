@@ -1,0 +1,88 @@
+@startuml
+!include _standard-style.puml
+
+title Hybrid Semantic Constraint Detection Architecture
+
+skinparam componentStyle rectangle
+skinparam direction top to bottom layout
+
+package "Constraint Monitor MCP Server" {
+
+  [Pre-Tool Hook] as Hook
+  note right of Hook
+    Intercepts Claude Code
+    tool calls before execution
+  end note
+
+  [Constraint Engine] as Engine
+
+  rectangle "Detection System" {
+
+    [Regex Pre-Filter] as Regex
+    note right of Regex
+      Fast pattern matching
+      1-5ms latency
+      $0 cost
+    end note
+
+    [Semantic Validator] as Semantic
+    note right of Semantic
+      LLM-powered analysis
+      50-200ms latency
+      ~$0.001 per check
+    end note
+
+    [LRU Cache] as Cache
+    note bottom of Cache: 1-hour TTL, 1000 entries
+  }
+
+  rectangle "Model Providers" {
+    [Groq API] as Groq
+    note bottom of Groq
+      llama-3.3-70b
+      qwen-2.5-32b
+      gpt-oss-20b
+    end note
+
+    [Anthropic API] as Anthropic
+    note bottom of Anthropic: Claude Haiku
+
+    [Gemini API] as Gemini
+    note bottom of Gemini: Gemini 1.5 Flash
+  }
+
+  [Circuit Breaker] as CB
+  note right of CB
+    Fallback to regex-only
+    on provider failures
+  end note
+}
+
+database ".constraint-monitor.yaml" as Config
+note bottom of Config
+  constraints:
+    - id: no-evolutionary-names
+      semantic_validation: true
+end note
+
+' Flow connections
+Hook --> Engine : content +\nfilePath
+Engine --> Regex : 1. Pattern match
+Regex --> Engine : No match:\nAllow
+Regex --> Semantic : Match:\nValidate
+Semantic --> Cache : Check
+Cache --> Semantic : Result
+Semantic --> CB : Route
+CB --> Groq : Code structure
+CB --> Anthropic : Security
+CB --> Gemini : Balanced
+Groq --> Semantic : isViolation
+Anthropic --> Semantic : isViolation
+Gemini --> Semantic : isViolation
+Semantic --> Engine : Validated
+Engine --> Hook : violations[]
+Hook --> Hook : Block/Allow
+
+Config ..> Engine : loads
+
+@enduml

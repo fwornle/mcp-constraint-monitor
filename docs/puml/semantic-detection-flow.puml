@@ -1,0 +1,110 @@
+@startuml
+!include _standard-style.puml
+
+title Semantic Constraint Detection Flow\n(Two-Level Hybrid Approach)
+
+skinparam sequenceMessageAlign center
+skinparam BoxPadding 10
+
+actor Claude as claude
+participant "Pre-Tool\nHook" as hook
+participant "Constraint\nEngine" as engine
+participant "Regex\nPre-Filter" as regex
+participant "Semantic\nValidator" as semantic
+participant "LRU\nCache" as cache
+participant "Model\nProvider\n(Groq/Anthropic/Gemini)" as llm
+
+== Tool Call Interception ==
+claude -> hook: tool_call(Write, "class TestEnhanced...")
+activate hook
+hook -> engine: checkConstraints(content, filePath)
+activate engine
+
+== Level 1: Fast Regex Pre-Filter (1-5ms) ==
+engine -> regex: pattern.match(content)
+activate regex
+
+alt No Match
+    regex -> engine: ✅ No violations
+    engine -> hook: { violations: [] }
+    hook -> claude: ✅ Allow tool execution
+    deactivate regex
+    deactivate engine
+    deactivate hook
+else Match Found
+    regex -> engine: ⚠️ Potential violation\n(pattern: "Enhanced")
+    deactivate regex
+
+    == Level 2: Semantic Validation (50-200ms) ==
+    note over engine: constraint.semantic_validation == true?
+    engine -> semantic: validateConstraint(\n  id: "no-evolutionary-names",\n  matches: ["Enhanced"],\n  context: {content, filePath}\n)
+    activate semantic
+
+    semantic -> cache: getCacheKey(constraint + hash)
+    activate cache
+
+    alt Cache Hit
+        cache -> semantic: ✅ Cached result\n(isViolation: false)
+        deactivate cache
+    else Cache Miss
+        cache -> semantic: Cache miss
+        deactivate cache
+
+        semantic -> llm: POST /v1/chat/completions\n{\n  "model": "llama-3.3-70b",\n  "prompt": "Is this creating\n  a parallel version?..."\n}
+        activate llm
+
+        llm -> llm: Analyze context:\n• File: test-utils.js\n• Intent: Test helper\n• Purpose: Not duplication
+
+        llm -> semantic: {\n  "isViolation": false,\n  "confidence": 0.95,\n  "reasoning": "Test file..."\n}
+        deactivate llm
+
+        semantic -> cache: setCache(result, TTL=1h)
+        activate cache
+        deactivate cache
+    end
+
+    semantic -> engine: {\n  isViolation: false,\n  confidence: 0.95,\n  semanticOverride: true\n}
+    deactivate semantic
+
+    alt Semantic Says: Not a Violation
+        engine -> hook: {\n  violations: [],\n  semantic_override: true\n}
+        hook -> claude: ✅ Allow tool execution\n(semantic validation overrode regex)
+        note right of claude
+          False positive prevented!
+          Regex matched "Enhanced"
+          but semantic understood
+          it's a legitimate test file
+        end note
+    else Semantic Confirms Violation
+        engine -> hook: {\n  violations: [\n    {\n      constraint_id: "...",\n      confidence: 0.95,\n      semantic_reasoning: "..."\n    }\n  ]\n}
+        hook -> claude: 🚫 Block tool execution\n(Display violation message)
+        note right of claude
+          True violation blocked
+          with high confidence
+        end note
+    end
+
+    deactivate engine
+    deactivate hook
+end
+
+== Fallback Behavior ==
+note over semantic, llm
+  If LLM provider fails or times out:
+  • Circuit breaker opens
+  • Falls back to regex-only mode
+  • Logs warning for investigation
+  • User experience: slightly higher false positives
+    but system remains operational
+end note
+
+legend right
+  |= Performance |= Metrics |
+  | Regex Filter | 1-5ms |
+  | Semantic Validation | 50-200ms |
+  | Cache Hit Rate | >60% |
+  | Cost per Check | ~$0.001 |
+  | False Positive Reduction | 30% → <5% |
+endlegend
+
+@enduml
