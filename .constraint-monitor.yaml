@@ -67,12 +67,17 @@ constraints:
     suggestion: "Define meaningful constants: const MAX_RETRIES = 3"
   - id: no-hardcoded-secrets
     group: security
-    pattern: (api[_-]?key|password|secret|token)\s*[=:]\s*['"][^'"]{8,}['"]
+    pattern: (?i)(api[\w]?key|password|secret|token)\s*[=:]\s*['"][^'"]{8,}['"]
     message: Potential hardcoded secret detected
     severity: critical
     enabled: true
     suggestion: Use environment variables or secure key management
     semantic_validation: true
+    exceptions:
+      - path: "test/**"
+      - path: "docs/**"
+      - path: "**/*.test.js"
+      - path: "**/*.spec.js"
   - id: no-eval-usage
     group: security
     pattern: \beval\s*\(

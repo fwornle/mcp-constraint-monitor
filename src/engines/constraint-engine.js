@@ -131,6 +131,16 @@ export class ConstraintEngine {
         return null;
       }
 
+      // Check if file matches any exception patterns
+      if (constraint.exceptions && Array.isArray(constraint.exceptions)) {
+        for (const exception of constraint.exceptions) {
+          if (this.matchesPath(filePath, exception.path)) {
+            logger.debug(`Skipping constraint ${id} for ${filePath} (matches exception: ${exception.path})`);
+            return null;
+          }
+        }
+      }
+
       try {
         // Extract inline flags from pattern (e.g., (?i) for case-insensitive)
         let pattern = constraint.pattern;
@@ -288,6 +298,35 @@ export class ConstraintEngine {
         improvement_trend: 'stable'
       }
     };
+  }
+
+  /**
+   * Check if a file path matches a glob pattern
+   * @param {string} filePath - The file path to check
+   * @param {string} pattern - The glob pattern (supports ** and *)
+   * @returns {boolean} - True if the path matches the pattern
+   */
+  matchesPath(filePath, pattern) {
+    if (!filePath || !pattern) return false;
+
+    // Normalize paths
+    const normalizedPath = filePath.replace(/\\/g, '/');
+    const normalizedPattern = pattern.replace(/\\/g, '/');
+
+    // Convert glob pattern to regex
+    // ** matches any number of directories
+    // * matches anything except /
+    let regexPattern = normalizedPattern
+      .replace(/\*\*/g, '{{DOUBLESTAR}}')
+      .replace(/\*/g, '[^/]*')
+      .replace(/{{DOUBLESTAR}}/g, '.*')
+      .replace(/\?/g, '[^/]');
+
+    // Add anchors
+    regexPattern = '^' + regexPattern + '$';
+
+    const regex = new RegExp(regexPattern);
+    return regex.test(normalizedPath);
   }
 
   async updateConstraints(newConstraints) {
