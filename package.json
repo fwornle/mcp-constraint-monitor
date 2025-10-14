@@ -17,6 +17,8 @@
     "postinstall": "node scripts/setup.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.65.0",
+    "@google/generative-ai": "^0.24.1",
     "@modelcontextprotocol/sdk": "^0.5.0",
     "@qdrant/js-client-rest": "^1.8.0",
     "@xenova/transformers": "^2.17.0",

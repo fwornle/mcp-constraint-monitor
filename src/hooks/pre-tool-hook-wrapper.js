@@ -34,6 +34,7 @@ async function processToolHook() {
       process.exit(0);
     }
 
+
     let toolData;
     try {
       toolData = JSON.parse(hookData);
@@ -44,16 +45,28 @@ async function processToolHook() {
     }
 
     // Extract tool call information
-    const toolCall = {
-      name: toolData.tool_name || toolData.name || toolData.toolName || 'unknown',
-      parameters: toolData.parameters || toolData.arguments || toolData.args || {},
-      input: toolData.input || {}
-    };
+    // CRITICAL: Claude Code passes tool parameters in "tool_input" field (NOT "parameters" or "arguments")
+    // See docs/CLAUDE-CODE-HOOK-FORMAT.md for complete documentation
+    const toolName = toolData.tool_name || toolData.name || toolData.toolName;
+    const toolParams = toolData.tool_input;
 
-    if (!toolCall.name || toolCall.name === 'unknown') {
+    if (!toolName) {
       // Cannot identify tool - allow continuation
+      console.error('⚠️ No tool name in hook data - allowing continuation');
       process.exit(0);
     }
+
+    if (!toolParams || typeof toolParams !== 'object') {
+      // No valid parameters - allow continuation but log warning
+      console.error(`⚠️ No tool_input for ${toolName} - allowing continuation`);
+      process.exit(0);
+    }
+
+    const toolCall = {
+      name: toolName,
+      parameters: toolParams,
+      input: toolParams
+    };
 
     // Detect project from file path in tool parameters
     const detectProjectFromFilePath = (toolCall) => {
@@ -104,14 +117,15 @@ async function processToolHook() {
     } else {
       // Should not reach here as preToolHook throws on violations
       console.error(`❌ Tool ${toolCall.name} blocked by constraints`);
-      process.exit(1);
+      process.exit(2);  // Exit code 2 = blocking error, stderr fed to Claude
     }
 
   } catch (error) {
     if (error.message.includes('CONSTRAINT VIOLATION')) {
-      // Log the violation but don't show stack trace
+      // CRITICAL: Exit code 2 blocks execution and feeds stderr back to Claude
+      // Claude will see the violation message and adapt its behavior
       console.error(error.message);
-      process.exit(1);
+      process.exit(2);  // Exit code 2 = blocking error, stderr fed to Claude
     } else {
       // Log other errors but allow continuation (fail open)
       console.error('⚠️ Tool hook error:', error.message);

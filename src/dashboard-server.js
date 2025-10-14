@@ -686,12 +686,26 @@ class DashboardServer {
             const { id } = req.params;
             const { enabled } = req.body;
 
-            logger.info(`Toggle constraint ${id} to ${enabled ? 'enabled' : 'disabled'}`);
+            // Get the project path (from query param or active project)
+            const projectPath = this.getCurrentProjectPath(req);
+
+            logger.info(`Toggle constraint ${id} to ${enabled ? 'enabled' : 'disabled'} for project ${projectPath}`);
+
+            // Actually update the YAML file
+            const success = this.config.updateProjectConstraint(projectPath, id, enabled);
+
+            if (!success) {
+                return res.status(500).json({
+                    status: 'error',
+                    message: `Failed to update constraint ${id} in configuration file`,
+                    error: 'Configuration update failed'
+                });
+            }
 
             res.json({
                 status: 'success',
                 message: `Constraint ${id} ${enabled ? 'enabled' : 'disabled'}`,
-                data: { constraintId: id, enabled }
+                data: { constraintId: id, enabled, projectPath }
             });
         } catch (error) {
             logger.error('Failed to toggle constraint', { error: error.message });

@@ -249,7 +249,7 @@ class RealTimeConstraintEnforcer {
           project: projectName,
           repository: projectName,
           source: 'main',
-          file_path: context.filePath || 'live-constraint-test',
+          file_path: context.filePath || violation.file_path || 'unknown',
           matches: violation.matches || 1,
           detected_at: new Date().toISOString(),
           pattern: violation.pattern
