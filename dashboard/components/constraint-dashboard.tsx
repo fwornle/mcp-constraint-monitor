@@ -46,6 +46,7 @@ import {
   selectConstraintsError
 } from '@/store/slices/constraintsSlice'
 import { selectProjects, selectCurrentProject, fetchProjects, setCurrentProject } from '@/store/slices/projectsSlice'
+import SystemHealthIndicator from '@/components/system-health-indicator'
 
 interface Constraint {
   id: string
@@ -191,13 +192,8 @@ export default function ConstraintDashboard() {
         project: selectedProject
       }))
 
-      // Project-aware refresh: only refresh if still on the same project
-      const currentProject = selectedProject
-      setTimeout(() => {
-        if (selectedProject === currentProject) {
-          dispatch(fetchConstraintData(selectedProject))
-        }
-      }, 2000)
+      // No refetch - Redux store already updated by toggleConstraint.fulfilled
+      // Refetching loads stale data from ConstraintDetector cache (60s reload)
     } catch (err) {
       console.error('Failed to toggle constraint:', err)
       // Show error feedback - could add toast notification here
@@ -847,6 +843,8 @@ export default function ConstraintDashboard() {
           </div>
           
           <div className="flex items-center gap-2">
+            <SystemHealthIndicator />
+
             <Select value={selectedProject} onValueChange={setSelectedProject} disabled={projectSwitching}>
               <SelectTrigger className="w-52 min-w-40 h-8">
                 <Folder className="h-3 w-3 mr-1" />
@@ -870,7 +868,7 @@ export default function ConstraintDashboard() {
                 ))}
               </SelectContent>
             </Select>
-            
+
             <Button
               variant="outline"
               size="sm"

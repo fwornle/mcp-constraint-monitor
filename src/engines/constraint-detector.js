@@ -1,15 +1,15 @@
 import { logger, PerformanceTimer, violationLogger } from '../utils/logger.js';
-import { readFileSync, existsSync } from 'fs';
-import { parse } from 'yaml';
 
 export class ConstraintDetector {
   constructor(config = {}) {
     this.config = {
-      constraintsFile: config.constraintsFile || './config/constraints.yaml',
       updateInterval: config.updateInterval || 60000, // 1 minute
       cacheEnabled: config.cacheEnabled !== false,
       ...config
     };
+
+    // Use ConfigManager for loading constraints (project-aware)
+    this.configManager = config.configManager || null;
 
     this.constraints = new Map();
     this.constraintsByType = new Map();
@@ -28,20 +28,26 @@ export class ConstraintDetector {
 
   /**
    * Load constraint rules from configuration
+   * Uses ConfigManager for project-aware loading (per-project overrides)
    */
   loadConstraints() {
     try {
-      if (!existsSync(this.config.constraintsFile)) {
-        logger.warn(`Constraints file not found: ${this.config.constraintsFile}`);
+      let constraintList = [];
+
+      // Use ConfigManager if available (project-aware loading)
+      if (this.configManager) {
+        constraintList = this.configManager.getConstraints();
+        logger.info(`Loaded constraints via ConfigManager (project-aware)`);
+      } else {
+        logger.warn('No ConfigManager available, using default constraints');
         this.initializeDefaultConstraints();
         return;
       }
 
-      const constraintsData = readFileSync(this.config.constraintsFile, 'utf8');
-      const config = parse(constraintsData);
-      
-      if (!config.constraints || !Array.isArray(config.constraints)) {
-        throw new Error('Invalid constraints file format: missing constraints array');
+      if (!Array.isArray(constraintList) || constraintList.length === 0) {
+        logger.warn('No constraints loaded from ConfigManager, using defaults');
+        this.initializeDefaultConstraints();
+        return;
       }
 
       // Clear existing constraints
@@ -50,7 +56,7 @@ export class ConstraintDetector {
       this.ruleCache.clear();
 
       // Load new constraints
-      for (const constraint of config.constraints) {
+      for (const constraint of constraintList) {
         if (!constraint.id) {
           logger.warn('Skipping constraint without id:', constraint);
           continue;
@@ -68,7 +74,7 @@ export class ConstraintDetector {
       }
 
       this.lastUpdate = Date.now();
-      logger.info(`Loaded ${this.constraints.size} constraint rules`);
+      logger.info(`Loaded ${this.constraints.size} constraint rules from project configuration`);
     } catch (error) {
       logger.error('Failed to load constraints:', error);
       if (this.constraints.size === 0) {

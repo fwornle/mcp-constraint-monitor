@@ -9,7 +9,7 @@ import express from 'express';
 import { createServer } from 'http';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, statSync } from 'fs';
 import cors from 'cors';
 import { parse as parseYAML, stringify as stringifyYAML } from 'yaml';
 import { ConfigManager } from './utils/config-manager.js';
@@ -122,6 +122,7 @@ class DashboardServer {
         this.app.post('/api/violations', this.handlePostViolations.bind(this));
         this.app.get('/api/activity', this.handleGetActivity.bind(this));
         this.app.get('/api/health', this.handleHealthCheck.bind(this));
+        this.app.get('/api/system-health', this.handleSystemHealth.bind(this));
         this.app.get('/api/projects', this.handleGetProjects.bind(this));
 
         // Project selection endpoint
@@ -609,6 +610,25 @@ class DashboardServer {
         }
     }
 
+    async handleSystemHealth(req, res) {
+        try {
+            const health = await this.gatherSystemStatus();
+            res.json({
+                status: 'success',
+                data: health,
+                timestamp: new Date().toISOString()
+            });
+        } catch (error) {
+            logger.error('Failed to get system health', { error: error.message });
+            res.status(500).json({
+                status: 'error',
+                message: 'Failed to retrieve system health',
+                error: error.message,
+                timestamp: new Date().toISOString()
+            });
+        }
+    }
+
     async handleGetProjects(req, res) {
         try {
             // Get projects from LSL registry if available
@@ -766,6 +786,110 @@ class DashboardServer {
                 message: 'Failed to check constraints',
                 error: error.message
             });
+        }
+    }
+
+    async gatherSystemStatus() {
+        const health = {
+            overall_status: 'healthy',
+            coordinator: { status: 'unknown', pid: null, uptime: null },
+            watchdog: { status: 'unknown', last_check: null },
+            projects: [],
+            services: {
+                dashboard: { status: 'operational', port: this.dashboardPort },
+                api: { status: 'operational', port: this.port }
+            }
+        };
+
+        try {
+            const lslRegistryPath = join(__dirname, '../../../.global-lsl-registry.json');
+
+            if (existsSync(lslRegistryPath)) {
+                const registryData = JSON.parse(readFileSync(lslRegistryPath, 'utf8'));
+
+                if (registryData.coordinator) {
+                    const uptime = Date.now() - (registryData.coordinator.startTime || 0);
+                    const isAlive = this.checkProcessAlive(registryData.coordinator.pid);
+
+                    health.coordinator = {
+                        status: isAlive ? 'operational' : 'degraded',
+                        pid: registryData.coordinator.pid,
+                        uptime: Math.floor(uptime / 1000),
+                        startTime: registryData.coordinator.startTime,
+                        healthCheckInterval: registryData.coordinator.healthCheckInterval
+                    };
+                }
+
+                // Only include projects with active Claude sessions (exchanges > 0)
+                // Monitors can run without active sessions, so we filter those out
+                health.projects = Object.entries(registryData.projects || {})
+                    .filter(([name, info]) => (info.exchanges || 0) > 0)
+                    .map(([name, info]) => {
+                        const timeSinceHealthCheck = Date.now() - (info.lastHealthCheck || 0);
+                        const isActive = info.status === 'active' && timeSinceHealthCheck < 60000;
+                        const monitorAlive = this.checkProcessAlive(info.monitorPid);
+
+                        return {
+                            name,
+                            status: isActive && monitorAlive ? 'active' : 'degraded',
+                            path: info.projectPath,
+                            monitorPid: info.monitorPid,
+                            monitorAlive,
+                            exchanges: info.exchanges || 0,
+                            lastHealthCheck: info.lastHealthCheck,
+                            timeSinceHealthCheck: Math.floor(timeSinceHealthCheck / 1000)
+                        };
+                    });
+
+                const hasUnhealthyCoordinator = health.coordinator.status !== 'operational';
+                const hasUnhealthyProjects = health.projects.some(p => p.status !== 'active');
+
+                if (hasUnhealthyCoordinator) {
+                    health.overall_status = 'critical';
+                } else if (hasUnhealthyProjects) {
+                    health.overall_status = 'degraded';
+                } else {
+                    health.overall_status = 'healthy';
+                }
+
+                logger.debug('System health status calculated', {
+                    overall: health.overall_status,
+                    coordinatorStatus: health.coordinator.status,
+                    projectStatuses: health.projects.map(p => ({ name: p.name, status: p.status })),
+                    hasUnhealthyCoordinator,
+                    hasUnhealthyProjects
+                });
+            } else {
+                logger.warn('LSL registry not found, system health limited');
+                health.overall_status = 'degraded';
+                health.coordinator.status = 'unknown';
+            }
+
+            const watchdogLogPath = join(__dirname, '../../../.logs/system-watchdog.log');
+            if (existsSync(watchdogLogPath)) {
+                const stats = statSync(watchdogLogPath);
+                health.watchdog = {
+                    status: 'operational',
+                    last_check: stats.mtime,
+                    log_size: stats.size
+                };
+            }
+        } catch (error) {
+            logger.error('Error collecting system health:', error);
+            health.overall_status = 'degraded';
+            health.error = error.message;
+        }
+
+        return health;
+    }
+
+    checkProcessAlive(pid) {
+        if (!pid) return false;
+        try {
+            process.kill(pid, 0);
+            return true;
+        } catch (error) {
+            return false;
         }
     }
 
