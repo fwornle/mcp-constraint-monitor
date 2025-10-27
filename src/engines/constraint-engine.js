@@ -141,6 +141,16 @@ export class ConstraintEngine {
         }
       }
 
+      // Check if file matches any whitelist patterns
+      if (constraint.whitelist && Array.isArray(constraint.whitelist)) {
+        for (const whitelistPattern of constraint.whitelist) {
+          if (this.matchesPath(filePath, whitelistPattern)) {
+            logger.debug(`Skipping constraint ${id} for ${filePath} (matches whitelist: ${whitelistPattern})`);
+            return null;
+          }
+        }
+      }
+
       try {
         // Extract inline flags from pattern (e.g., (?i) for case-insensitive)
         let pattern = constraint.pattern;
