@@ -116,6 +116,9 @@ interface ChartDataPoint {
   isCurrentInterval?: boolean // Flag to highlight current time bin
 }
 
+// Debug flag - set to false to disable all DEBUG console logs
+const DEBUG_ENABLED = false
+
 export default function ConstraintDashboard() {
   // Redux state
   const dispatch = useAppDispatch()
@@ -155,14 +158,14 @@ export default function ConstraintDashboard() {
 
   // Single useEffect for initial data loading
   useEffect(() => {
-    console.log('[DEBUG] Initial mount - fetching projects')
+    DEBUG_ENABLED && console.log('[DEBUG] Initial mount - fetching projects')
     dispatch(fetchProjects())
   }, [dispatch])
 
   // Sync selectedProject to Redux currentProject
   useEffect(() => {
     if (selectedProject && selectedProject !== 'current') {
-      console.log('[DEBUG] Syncing selectedProject to Redux:', selectedProject)
+      DEBUG_ENABLED && console.log('[DEBUG] Syncing selectedProject to Redux:', selectedProject)
       dispatch(setCurrentProject(selectedProject))
     }
   }, [selectedProject, dispatch])
@@ -170,7 +173,7 @@ export default function ConstraintDashboard() {
   // Single useEffect for constraint data when project or timeRange changes
   useEffect(() => {
     if (selectedProject && selectedProject !== 'current') {
-      console.log('[DEBUG] Fetching constraints for project:', selectedProject, 'timeRange:', timeRange)
+      DEBUG_ENABLED && console.log('[DEBUG] Fetching constraints for project:', selectedProject, 'timeRange:', timeRange)
       setProjectSwitching(true)
       dispatch(fetchConstraintData(selectedProject)).finally(() => setProjectSwitching(false))
     }
@@ -333,33 +336,33 @@ export default function ConstraintDashboard() {
 
   // Timeline bar click handler for specific severity categories
   const handleBarClick = (data: unknown, index: number, severity: 'info' | 'warning' | 'error' | 'critical') => {
-    console.log('[DEBUG] handleBarClick called with severity:', severity, 'data:', data, 'index:', index)
+    DEBUG_ENABLED && console.log('[DEBUG] handleBarClick called with severity:', severity, 'data:', data, 'index:', index)
 
     // Get the chart data for this index
     const clickedData = chartData[index]
     if (!clickedData) {
-      console.log('[DEBUG] No chart data found for index:', index)
+      DEBUG_ENABLED && console.log('[DEBUG] No chart data found for index:', index)
       return
     }
 
-    console.log('[DEBUG] Clicked chart data:', clickedData)
-    console.log('[DEBUG] Looking for violations with severity:', severity)
+    DEBUG_ENABLED && console.log('[DEBUG] Clicked chart data:', clickedData)
+    DEBUG_ENABLED && console.log('[DEBUG] Looking for violations with severity:', severity)
 
     // Get interval hours for this time range
     const intervalHours = getIntervalHours()
-    console.log('[DEBUG] Interval hours:', intervalHours)
+    DEBUG_ENABLED && console.log('[DEBUG] Interval hours:', intervalHours)
 
     // Find violations in this time interval with matching severity
     const intervalStart = new Date(clickedData.timestamp)
     const intervalEnd = new Date(intervalStart.getTime() + (intervalHours * 60 * 60 * 1000))
 
-    console.log('[DEBUG] Time interval:', {
+    DEBUG_ENABLED && console.log('[DEBUG] Time interval:', {
       start: intervalStart.toISOString(),
       end: intervalEnd.toISOString()
     })
 
     const allViolations = getFilteredViolations()
-    console.log('[DEBUG] Total filtered violations:', allViolations.length)
+    DEBUG_ENABLED && console.log('[DEBUG] Total filtered violations:', allViolations.length)
 
     const violationsInInterval = allViolations.filter(violation => {
       const violationTime = new Date(violation.timestamp)
@@ -367,22 +370,22 @@ export default function ConstraintDashboard() {
       const matchesSeverity = violation.severity === severity
 
       if (inInterval && matchesSeverity) {
-        console.log('[DEBUG] Found matching violation:', violation.id, violationTime.toISOString(), 'severity:', violation.severity)
+        DEBUG_ENABLED && console.log('[DEBUG] Found matching violation:', violation.id, violationTime.toISOString(), 'severity:', violation.severity)
       }
 
       return inInterval && matchesSeverity
     })
 
-    console.log('[DEBUG] Found', violationsInInterval.length, 'violations in clicked interval with severity:', severity)
+    DEBUG_ENABLED && console.log('[DEBUG] Found', violationsInInterval.length, 'violations in clicked interval with severity:', severity)
 
     // Scroll to violations list
-    console.log('[DEBUG] Scrolling to violations list')
+    DEBUG_ENABLED && console.log('[DEBUG] Scrolling to violations list')
     scrollToViolationsList()
 
     // If there are violations with this severity in this interval, expand the first one
     if (violationsInInterval.length > 0) {
       const targetViolation = violationsInInterval[0]
-      console.log('[DEBUG] Target violation to expand:', {
+      DEBUG_ENABLED && console.log('[DEBUG] Target violation to expand:', {
         id: targetViolation.id,
         timestamp: targetViolation.timestamp,
         severity: targetViolation.severity,
@@ -394,12 +397,12 @@ export default function ConstraintDashboard() {
 
       // Scroll to the specific violation after a short delay
       setTimeout(() => {
-        console.log('[DEBUG] Looking for violation element with ID:', targetViolation.id)
+        DEBUG_ENABLED && console.log('[DEBUG] Looking for violation element with ID:', targetViolation.id)
         const violationElement = document.querySelector(`[data-violation-id="${targetViolation.id}"]`)
-        console.log('[DEBUG] Found violation element:', violationElement)
+        DEBUG_ENABLED && console.log('[DEBUG] Found violation element:', violationElement)
 
         if (violationElement) {
-          console.log('[DEBUG] Scrolling to violation element')
+          DEBUG_ENABLED && console.log('[DEBUG] Scrolling to violation element')
           // First scroll the parent container to make the element visible
           const scrollContainer = violationElement.closest('.overflow-y-auto')
           if (scrollContainer) {
@@ -418,11 +421,11 @@ export default function ConstraintDashboard() {
             violationElement.scrollIntoView({ behavior: 'smooth', block: 'center' })
           }
         } else {
-          console.log('[DEBUG] Violation element not found!')
+          DEBUG_ENABLED && console.log('[DEBUG] Violation element not found!')
         }
       }, 500)
     } else {
-      console.log('[DEBUG] No violations found in the clicked interval with severity:', severity)
+      DEBUG_ENABLED && console.log('[DEBUG] No violations found in the clicked interval with severity:', severity)
 
       // Still scroll to violations list and show a general message
       // Let's find any violations in the interval regardless of severity to provide feedback
@@ -432,12 +435,12 @@ export default function ConstraintDashboard() {
       })
 
       if (anyViolationsInInterval.length > 0) {
-        console.log('[DEBUG] Found', anyViolationsInInterval.length, 'violations in interval but with different severities')
+        DEBUG_ENABLED && console.log('[DEBUG] Found', anyViolationsInInterval.length, 'violations in interval but with different severities')
         const severityCounts = anyViolationsInInterval.reduce((acc, v) => {
           acc[v.severity] = (acc[v.severity] || 0) + 1
           return acc
         }, {} as Record<string, number>)
-        console.log('[DEBUG] Severity breakdown:', severityCounts)
+        DEBUG_ENABLED && console.log('[DEBUG] Severity breakdown:', severityCounts)
       }
     }
   }
@@ -517,7 +520,7 @@ export default function ConstraintDashboard() {
       throw new Error('Violations data not loaded - violations is missing')
     }
 
-    console.log('[DEBUG] getFilteredViolations - timeRange:', timeRange, 'violations.length:', violations.length)
+    DEBUG_ENABLED && console.log('[DEBUG] getFilteredViolations - timeRange:', timeRange, 'violations.length:', violations.length)
 
     if (!violations.length) return []
 
@@ -537,7 +540,7 @@ export default function ConstraintDashboard() {
         cutoff = subMonths(now, 1)
         break
       case '1y':
-        console.log('[DEBUG] timeRange=1y, returning all', violations.length, 'violations')
+        DEBUG_ENABLED && console.log('[DEBUG] timeRange=1y, returning all', violations.length, 'violations')
         // Don't filter by time for 1y, but still apply sorting below
         break
       default:
@@ -610,8 +613,8 @@ export default function ConstraintDashboard() {
     const timelineStart = new Date(nextBoundary.getTime() - (timelineHours * 60 * 60 * 1000))
     const intervalCount = Math.ceil(timelineHours / intervalHours)
 
-    console.log('[DEBUG] Timeline config - range:', timeRange, 'hours:', timelineHours, 'interval:', intervalHours, 'count:', intervalCount)
-    console.log('[DEBUG] Timeline range: from', timelineStart.toISOString(), 'to', nextBoundary.toISOString())
+    DEBUG_ENABLED && console.log('[DEBUG] Timeline config - range:', timeRange, 'hours:', timelineHours, 'interval:', intervalHours, 'count:', intervalCount)
+    DEBUG_ENABLED && console.log('[DEBUG] Timeline range: from', timelineStart.toISOString(), 'to', nextBoundary.toISOString())
 
     // Create intervals - ALWAYS return this structure
     const intervals: ChartDataPoint[] = []
@@ -668,29 +671,28 @@ export default function ConstraintDashboard() {
       })
     }
 
-    console.log('[DEBUG] Generated', intervals.length, `${intervalHours}h intervals for ${timelineHours}h period`)
-    console.log('[DEBUG] First interval:', intervals[0])
-    console.log('[DEBUG] Last interval:', intervals[intervals.length - 1])
+    DEBUG_ENABLED && console.log('[DEBUG] Generated', intervals.length, `${intervalHours}h intervals for ${timelineHours}h period`)
+    DEBUG_ENABLED && console.log('[DEBUG] First interval:', intervals[0])
+    DEBUG_ENABLED && console.log('[DEBUG] Last interval:', intervals[intervals.length - 1])
 
     if (!violations) {
-      console.log('[DEBUG] No violations data available, returning empty intervals')
+      DEBUG_ENABLED && console.log('[DEBUG] No violations data available, returning empty intervals')
       return intervals // Return intervals with zero violations
     }
 
-    console.log('[DEBUG] Chart function - violations.length:', violations.length)
+    DEBUG_ENABLED && console.log('[DEBUG] Chart function - violations.length:', violations.length)
 
     if (!violations.length) {
-      console.log('[DEBUG] No violations data, returning empty intervals with zero violations')
+      DEBUG_ENABLED && console.log('[DEBUG] No violations data, returning empty intervals with zero violations')
       return intervals // Return intervals with zero violations
     }
 
-    console.log('[DEBUG] Processing', violations.length, 'violations')
+    DEBUG_ENABLED && console.log('[DEBUG] Processing', violations.length, 'violations')
 
     // Aggregate violations into intervals
     violations.forEach(violation => {
       try {
         const violationTime = parseISO(violation.timestamp)
-        console.log('[DEBUG] Processing violation:', violation.id, 'actual time:', violationTime.toISOString())
 
         // Only include violations within our timeline window
         if (violationTime >= timelineStart && violationTime < nextBoundary) {
@@ -712,10 +714,10 @@ export default function ConstraintDashboard() {
               intervals[intervalIndex].info += 1
             }
 
-            console.log('[DEBUG] Added violation to interval', intervalIndex, 'at', intervals[intervalIndex].time, 'severity:', severity, 'total now:', intervals[intervalIndex].violations)
+            DEBUG_ENABLED && console.log('[DEBUG] Added violation to interval', intervalIndex, 'at', intervals[intervalIndex].time, 'severity:', severity, 'total now:', intervals[intervalIndex].violations)
           }
         } else {
-          console.log('[DEBUG] Violation outside timeline window:', violationTime.toISOString())
+          DEBUG_ENABLED && console.log('[DEBUG] Violation outside timeline window:', violationTime.toISOString())
         }
 
       } catch (error) {
@@ -723,14 +725,14 @@ export default function ConstraintDashboard() {
       }
     })
 
-    console.log('[DEBUG] Final intervals with violations:')
+    DEBUG_ENABLED && console.log('[DEBUG] Final intervals with violations:')
     intervals.forEach((interval, idx) => {
       if (interval.violations > 0) {
-        console.log('[DEBUG] Interval', idx, ':', interval.fullTime, '- violations:', interval.violations)
+        DEBUG_ENABLED && console.log('[DEBUG] Interval', idx, ':', interval.fullTime, '- violations:', interval.violations)
       }
       // Force current interval to have minimal height for visibility
       if (interval.isCurrentInterval && interval.violations === 0) {
-        console.log('[DEBUG] Current interval has no violations, adding minimal height for visibility')
+        DEBUG_ENABLED && console.log('[DEBUG] Current interval has no violations, adding minimal height for visibility')
         interval.violations = 0.1; // Minimal height to show blue bar
       }
     })
@@ -747,7 +749,7 @@ export default function ConstraintDashboard() {
     intervals.forEach((interval, idx) => {
       if (interval.isCurrentInterval) {
         interval.nowMarker = nowMarkerHeight
-        console.log('[DEBUG] Set nowMarker for current interval', idx, 'to', nowMarkerHeight, '(4% of max', maxTotalViolations, ')')
+        DEBUG_ENABLED && console.log('[DEBUG] Set nowMarker for current interval', idx, 'to', nowMarkerHeight, '(4% of max', maxTotalViolations, ')')
       }
     })
 
@@ -779,7 +781,7 @@ export default function ConstraintDashboard() {
   }
 
   // Debug state values before render decisions
-  console.log('[DEBUG] Render decision - loading:', loading, 'constraints.length:', constraints.length, 'error:', error, 'selectedProject:', selectedProject, 'projects.length:', projects.length)
+  DEBUG_ENABLED && console.log('[DEBUG] Render decision - loading:', loading, 'constraints.length:', constraints.length, 'error:', error, 'selectedProject:', selectedProject, 'projects.length:', projects.length)
 
   if (loading && constraints.length === 0) {
     return (
@@ -999,7 +1001,7 @@ export default function ConstraintDashboard() {
                   />
                   <Tooltip
                     formatter={(value: number, name: string, props: unknown) => {
-                      console.log('[DEBUG] Tooltip formatter - value:', value, 'name:', name, 'props:', props)
+                      DEBUG_ENABLED && console.log('[DEBUG] Tooltip formatter - value:', value, 'name:', name, 'props:', props)
                       const severityLabels: { [key: string]: string } = {
                         warning: 'Warning',
                         error: 'Error',
@@ -1013,7 +1015,7 @@ export default function ConstraintDashboard() {
                     labelFormatter={(label: unknown, payload: readonly unknown[]) => {
                       if (payload && payload.length > 0) {
                         const data = (payload[0] as { payload?: ChartDataPoint })?.payload
-                        console.log('[DEBUG] Tooltip labelFormatter - payload data:', data)
+                        DEBUG_ENABLED && console.log('[DEBUG] Tooltip labelFormatter - payload data:', data)
                         const totalViolations = (data?.warning || 0) + (data?.error || 0) + (data?.critical || 0) + (data?.info || 0)
                         if (data?.fullTime) {
                           return `${data.fullTime} • Total: ${totalViolations} violation${totalViolations !== 1 ? 's' : ''}`

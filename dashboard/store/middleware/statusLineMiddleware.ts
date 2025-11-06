@@ -253,7 +253,8 @@ export const statusLineMiddleware: Middleware<{}, RootState, AppDispatch> =
   }
 
 // Export manager for external control
-export { statusLineManager, StatusLineConfig }
+export { statusLineManager }
+export type { StatusLineConfig }
 
 // Utility functions for components
 export const useStatusLineConfig = () => {

@@ -112,6 +112,11 @@ class ApiManager {
     this.retryQueues.set(requestId, currentRetries + 1)
   }
 
+  // Get retry count
+  getRetryCount(requestId: string): number {
+    return this.retryQueues.get(requestId) || 0
+  }
+
   // Clear retry counter
   clearRetry(requestId: string) {
     this.retryQueues.delete(requestId)
@@ -192,11 +197,11 @@ function generateRequestId(action: any): string {
 
 // API Middleware implementation
 export const apiMiddleware: Middleware<{}, RootState, AppDispatch> =
-  (store) => (next) => (action) => {
+  (store) => (next) => (action: any) => {
     const result = next(action)
 
     // Track API requests
-    if (action.type.endsWith('/pending')) {
+    if (action.type && action.type.endsWith('/pending')) {
       const requestId = generateRequestId(action)
       const endpoint = extractEndpoint(action)
 
@@ -237,7 +242,7 @@ export const apiMiddleware: Middleware<{}, RootState, AppDispatch> =
         if (apiManager.shouldRetry(requestId)) {
           apiManager.incrementRetry(requestId)
 
-          console.warn(`⚠️ API Request failed, scheduling retry: ${endpoint} (attempt ${apiManager.retryQueues.get(requestId)}/3)`)
+          console.warn(`⚠️ API Request failed, scheduling retry: ${endpoint} (attempt ${apiManager.getRetryCount(requestId)}/3)`)
 
           // Schedule retry
           setTimeout(() => {
@@ -271,7 +276,8 @@ export const apiMiddleware: Middleware<{}, RootState, AppDispatch> =
   }
 
 // Export manager and utilities for external use
-export { apiManager, ApiManager, ApiMetrics, ApiErrorInfo }
+export { apiManager, ApiManager }
+export type { ApiMetrics, ApiErrorInfo }
 
 // Hook for components to access API metrics
 export const useApiMetrics = () => {

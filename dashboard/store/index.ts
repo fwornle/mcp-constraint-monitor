@@ -1,4 +1,4 @@
-import { configureStore } from '@reduxjs/toolkit'
+import { configureStore, combineReducers } from '@reduxjs/toolkit'
 import { useDispatch, useSelector, TypedUseSelectorHook } from 'react-redux'
 
 // Import slices
@@ -12,14 +12,17 @@ import lslWindowReducer from './slices/lslWindowSlice'
 import { statusLineMiddleware } from './middleware/statusLineMiddleware'
 import { apiMiddleware } from './middleware/apiMiddleware'
 
-export const store = configureStore({
-  reducer: {
-    // Removed globalHealth - API endpoints don't exist
-    projects: projectsReducer,
-    constraints: constraintsReducer,
-    apiCost: apiCostReducer,
-    lslWindow: lslWindowReducer,
-  },
+const rootReducer = combineReducers({
+  projects: projectsReducer,
+  constraints: constraintsReducer,
+  apiCost: apiCostReducer,
+  lslWindow: lslWindowReducer,
+})
+
+export type RootState = ReturnType<typeof rootReducer>
+
+export const store: any = configureStore({
+  reducer: rootReducer,
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
       serializableCheck: {
@@ -31,12 +34,11 @@ export const store = configureStore({
         ignoredPaths: ['items.dates'],
       },
     })
-      .concat(statusLineMiddleware)
-      .concat(apiMiddleware),
+      .concat(statusLineMiddleware as any)
+      .concat(apiMiddleware as any),
   devTools: process.env.NODE_ENV !== 'production',
 })
 
-export type RootState = ReturnType<typeof store.getState>
 export type AppDispatch = typeof store.dispatch
 
 // Typed hooks for use throughout the app

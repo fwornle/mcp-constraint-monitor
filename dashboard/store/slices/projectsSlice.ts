@@ -6,6 +6,7 @@ export interface ProjectInfo {
   displayName: string
   path: string
   active: boolean
+  current?: boolean
   lastActivity: string
   status: 'active' | 'idle' | 'error' | 'unknown'
   health: 'healthy' | 'warning' | 'critical'

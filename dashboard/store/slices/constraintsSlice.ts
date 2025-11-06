@@ -16,6 +16,7 @@ export interface Violation {
   matches: number
   detected_at: string
   pattern: string
+  session_id?: string
 }
 
 export interface ConstraintInfo {
@@ -204,7 +205,6 @@ const constraintsSlice = createSlice({
         state.lastUpdate = Date.now()
 
         console.log('[REDUX] fetchConstraintData.fulfilled - action.payload:', {
-          hasData: !!action.payload.data,
           hasViolations: !!action.payload.violations,
           hasConstraints: !!action.payload.constraints,
           violationsLength: action.payload.violations?.length,
