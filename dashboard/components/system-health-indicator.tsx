@@ -1,8 +1,10 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { Activity, AlertCircle, CheckCircle2, Info } from 'lucide-react'
+import { Activity, AlertCircle, CheckCircle2, Info, ExternalLink } from 'lucide-react'
 import CONFIG from '@/lib/config'
+
+const SYSTEM_HEALTH_DASHBOARD_PORT = 3032
 
 interface SystemHealthData {
   overall_status: 'healthy' | 'degraded' | 'critical'
@@ -96,11 +98,22 @@ export default function SystemHealthIndicator() {
       {expanded && (
         <div className="absolute right-0 mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
           <div className="p-3 space-y-2 text-xs">
-            <div className="flex items-center justify-between pb-2 border-b">
-              <h3 className="font-semibold text-sm">System Health</h3>
-              <span className={`px-2 py-0.5 rounded text-xs font-medium ${getStatusColor()}`}>
-                {health.overall_status}
-              </span>
+            <div className="pb-2 border-b space-y-2">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-sm">System Health</h3>
+                <span className={`px-2 py-0.5 rounded text-xs font-medium ${getStatusColor()}`}>
+                  {health.overall_status}
+                </span>
+              </div>
+              <a
+                href={`http://localhost:${SYSTEM_HEALTH_DASHBOARD_PORT}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 hover:underline"
+              >
+                <ExternalLink className="h-3 w-3" />
+                <span>Open System Health Dashboard</span>
+              </a>
             </div>
 
             {/* Coordinator */}

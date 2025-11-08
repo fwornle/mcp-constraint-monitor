@@ -133,6 +133,11 @@ class DashboardServer {
         this.app.post('/api/violations/:id/resolve', this.handleResolveViolation.bind(this));
         this.app.post('/api/constraints/check', this.handleConstraintCheck.bind(this));
 
+        // Health Verifier routes
+        this.app.get('/api/health-verifier/status', this.handleGetHealthStatus.bind(this));
+        this.app.get('/api/health-verifier/report', this.handleGetHealthReport.bind(this));
+        this.app.post('/api/health-verifier/verify', this.handleTriggerVerification.bind(this));
+
         // Error handling
         this.app.use(this.handleError.bind(this));
     }
@@ -890,6 +895,124 @@ class DashboardServer {
             return true;
         } catch (error) {
             return false;
+        }
+    }
+
+    /**
+     * Get current health verifier status
+     */
+    async handleGetHealthStatus(req, res) {
+        try {
+            const codingRoot = process.env.CODING_REPO || join(__dirname, '../../..');
+            const statusPath = join(codingRoot, '.health/verification-status.json');
+
+            if (!existsSync(statusPath)) {
+                return res.json({
+                    status: 'success',
+                    data: {
+                        status: 'offline',
+                        message: 'Health verifier is not running'
+                    }
+                });
+            }
+
+            const statusData = JSON.parse(readFileSync(statusPath, 'utf8'));
+            const age = Date.now() - new Date(statusData.lastUpdate).getTime();
+
+            // Check if data is stale (>2 minutes)
+            if (age > 120000) {
+                statusData.status = 'stale';
+                statusData.ageMs = age;
+            } else {
+                statusData.status = 'operational';
+                statusData.ageMs = age;
+            }
+
+            res.json({
+                status: 'success',
+                data: statusData
+            });
+        } catch (error) {
+            logger.error('Failed to get health status', { error: error.message });
+            res.status(500).json({
+                status: 'error',
+                message: 'Failed to retrieve health status',
+                error: error.message
+            });
+        }
+    }
+
+    /**
+     * Get detailed health verification report
+     */
+    async handleGetHealthReport(req, res) {
+        try {
+            const codingRoot = process.env.CODING_REPO || join(__dirname, '../../..');
+            const reportPath = join(codingRoot, '.health/verification-report.json');
+
+            if (!existsSync(reportPath)) {
+                return res.json({
+                    status: 'success',
+                    data: {
+                        message: 'No health report available',
+                        checks: [],
+                        violations: []
+                    }
+                });
+            }
+
+            const reportData = JSON.parse(readFileSync(reportPath, 'utf8'));
+
+            res.json({
+                status: 'success',
+                data: reportData
+            });
+        } catch (error) {
+            logger.error('Failed to get health report', { error: error.message });
+            res.status(500).json({
+                status: 'error',
+                message: 'Failed to retrieve health report',
+                error: error.message
+            });
+        }
+    }
+
+    /**
+     * Trigger a health verification run
+     */
+    async handleTriggerVerification(req, res) {
+        try {
+            const { execSync } = await import('child_process');
+            const codingRoot = process.env.CODING_REPO || join(__dirname, '../../..');
+            const verifierScript = join(codingRoot, 'scripts/health-verifier.js');
+
+            if (!existsSync(verifierScript)) {
+                return res.status(404).json({
+                    status: 'error',
+                    message: 'Health verifier script not found'
+                });
+            }
+
+            // Run verification in background
+            execSync(`node "${verifierScript}" verify > /dev/null 2>&1 &`, {
+                cwd: codingRoot,
+                timeout: 1000
+            });
+
+            res.json({
+                status: 'success',
+                message: 'Health verification triggered',
+                data: {
+                    triggered_at: new Date().toISOString()
+                }
+            });
+        } catch (error) {
+            logger.error('Failed to trigger verification', { error: error.message });
+            res.status(500).json({
+                status: 'error',
+                message: 'Failed to trigger health verification',
+                error: error.message
+            });
         }
     }
 
