@@ -62,6 +62,11 @@ async function processToolHook() {
       process.exit(0);
     }
 
+    // Extract constraint overrides if present
+    // User can request override by including in their prompt: OVERRIDE_CONSTRAINT: constraint-id
+    // Claude will then inject _constraint_override parameter in tool calls
+    const constraintOverride = toolParams._constraint_override || null;
+
     const toolCall = {
       name: toolName,
       parameters: toolParams,
@@ -104,7 +109,8 @@ async function processToolHook() {
       workingDirectory: process.cwd(),
       sessionId: toolData.sessionId || 'unknown',
       toolName: toolCall.name,
-      project: detectedProject  // Add detected project to context
+      project: detectedProject,  // Add detected project to context
+      constraintOverride: constraintOverride  // Pass user-initiated override
     };
 
     // Check constraints

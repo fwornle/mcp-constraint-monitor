@@ -98,15 +98,41 @@ class RealTimeConstraintEnforcer {
     return segments[segments.length - 1] || 'unknown';
   }
 
-  shouldBlockViolation(violation) {
+  shouldBlockViolation(violation, constraintOverride = null) {
     const blockingLevels = this.config.enforcement?.blocking_levels || ['critical', 'error'];
+
+    // Check if this violation has a user-initiated override
+    if (constraintOverride) {
+      const overrideList = Array.isArray(constraintOverride)
+        ? constraintOverride
+        : [constraintOverride];
+
+      if (overrideList.includes(violation.id)) {
+        // Log the override for audit trail
+        console.log(`🔓 CONSTRAINT OVERRIDE: User-initiated override for constraint '${violation.id}'`);
+        return false; // Don't block this violation
+      }
+    }
+
     return blockingLevels.includes(violation.severity);
   }
 
-  formatViolationMessage(violations) {
-    const blockingViolations = violations.filter(v => this.shouldBlockViolation(v));
-    
+  formatViolationMessage(violations, constraintOverride = null) {
+    const blockingViolations = violations.filter(v => this.shouldBlockViolation(v, constraintOverride));
+
+    // Check if any violations were overridden
+    const overriddenViolations = violations.filter(v => {
+      if (!constraintOverride) return false;
+      const overrideList = Array.isArray(constraintOverride) ? constraintOverride : [constraintOverride];
+      return overrideList.includes(v.id) && this.config.enforcement?.blocking_levels?.includes(v.severity);
+    });
+
     if (blockingViolations.length === 0) {
+      // If we have overridden violations, log them for user awareness
+      if (overriddenViolations.length > 0) {
+        const overriddenIds = overriddenViolations.map(v => v.id).join(', ');
+        console.log(`✅ Tool allowed with constraint override(s): ${overriddenIds}`);
+      }
       return null; // No blocking violations
     }
 
@@ -204,7 +230,8 @@ class RealTimeConstraintEnforcer {
       await this.logViolationsToStorage(checkResult.violations, { ...context, filePath: params.file_path }, 'tool_call');
     }
 
-    const blockingMessage = this.formatViolationMessage(checkResult.violations || []);
+    // Pass constraint override from context to violation formatting
+    const blockingMessage = this.formatViolationMessage(checkResult.violations || [], context.constraintOverride);
 
     if (blockingMessage) {
       return {
