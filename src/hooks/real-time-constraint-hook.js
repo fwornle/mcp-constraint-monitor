@@ -13,6 +13,7 @@ import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
+import { logger } from '../utils/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -65,7 +66,7 @@ class RealTimeConstraintEnforcer {
 
       return config;
     } catch (error) {
-      console.error('⚠️ Failed to load constraint config:', error.message);
+      logger.error('⚠️ Failed to load constraint config:', error.message);
       return { enforcement: { enabled: false } };
     }
   }
@@ -88,7 +89,7 @@ class RealTimeConstraintEnforcer {
 
       return result;
     } catch (error) {
-      console.error('🔴 Constraint checking error:', error.message);
+      logger.error('🔴 Constraint checking error:', error.message);
       return { violations: [], compliance: 10 }; // Fail open
     }
   }
@@ -109,7 +110,7 @@ class RealTimeConstraintEnforcer {
 
       if (overrideList.includes(violation.id)) {
         // Log the override for audit trail
-        console.log(`🔓 CONSTRAINT OVERRIDE: User-initiated override for constraint '${violation.id}'`);
+        logger.info(`🔓 CONSTRAINT OVERRIDE: User-initiated override for constraint '${violation.id}'`);
         return false; // Don't block this violation
       }
     }
@@ -131,7 +132,7 @@ class RealTimeConstraintEnforcer {
       // If we have overridden violations, log them for user awareness
       if (overriddenViolations.length > 0) {
         const overriddenIds = overriddenViolations.map(v => v.id).join(', ');
-        console.log(`✅ Tool allowed with constraint override(s): ${overriddenIds}`);
+        logger.info(`✅ Tool allowed with constraint override(s): ${overriddenIds}`);
       }
       return null; // No blocking violations
     }
@@ -256,7 +257,7 @@ class RealTimeConstraintEnforcer {
         const content = readFileSync(violationStoragePath, 'utf8');
         existingData = JSON.parse(content);
       } catch (error) {
-        console.log('Creating new violation storage...');
+        logger.info('Creating new violation storage...');
       }
 
       // Add each violation with full context
@@ -283,13 +284,13 @@ class RealTimeConstraintEnforcer {
         };
 
         existingData.violations.push(loggedViolation);
-        console.log(`📝 LOGGED TO DASHBOARD [${projectName}]: ${violation.constraint_id} (${violation.severity})`);
+        logger.info(`📝 LOGGED TO DASHBOARD [${projectName}]: ${violation.constraint_id} (${violation.severity})`);
       }
 
       // Write back to storage
       writeFileSync(violationStoragePath, JSON.stringify(existingData, null, 2));
     } catch (error) {
-      console.error('❌ Failed to log violations to storage:', error);
+      logger.error('❌ Failed to log violations to storage:', error);
     }
   }
 }
@@ -316,7 +317,7 @@ export async function prePromptHook(prompt, context = {}) {
     }
     
     // Log other errors but don't block
-    console.error('⚠️ Constraint hook error:', error.message);
+    logger.error('⚠️ Constraint hook error:', error.message);
     return { continue: true };
   }
 }
@@ -340,7 +341,7 @@ export async function preToolHook(toolCall, context = {}) {
     }
     
     // Log other errors but don't block
-    console.error('⚠️ Tool constraint hook error:', error.message);
+    logger.error('⚠️ Tool constraint hook error:', error.message);
     return { continue: true };
   }
 }

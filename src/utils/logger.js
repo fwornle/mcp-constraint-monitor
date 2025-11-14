@@ -42,33 +42,45 @@ const performanceFormat = winston.format.combine(
   })
 );
 
-export const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || 'info',
-  format: logFormat,
-  transports: [
-    // Console output
+// CRITICAL: Hooks MUST be silent (no stdout/stderr) when exiting 0
+// Only log to files when running as a Claude Code hook
+const isRunningAsHook = process.env.CLAUDE_CODE_HOOK === 'true' ||
+                        process.stdin.isTTY === false ||
+                        process.argv[1]?.includes('hook-wrapper');
+
+const transports = [
+  // General log file
+  new winston.transports.File({
+    filename: join(logsDir, 'constraint-monitor.log'),
+    maxsize: 10 * 1024 * 1024, // 10MB
+    maxFiles: 5
+  }),
+
+  // Error log file
+  new winston.transports.File({
+    filename: join(logsDir, 'errors.log'),
+    level: 'error',
+    maxsize: 5 * 1024 * 1024, // 5MB
+    maxFiles: 3
+  })
+];
+
+// Only add console transport if NOT running as a hook
+if (!isRunningAsHook) {
+  transports.unshift(
     new winston.transports.Console({
       format: winston.format.combine(
         winston.format.colorize(),
         logFormat
       )
-    }),
-    
-    // General log file
-    new winston.transports.File({
-      filename: join(logsDir, 'constraint-monitor.log'),
-      maxsize: 10 * 1024 * 1024, // 10MB
-      maxFiles: 5
-    }),
-    
-    // Error log file
-    new winston.transports.File({
-      filename: join(logsDir, 'errors.log'),
-      level: 'error',
-      maxsize: 5 * 1024 * 1024, // 5MB
-      maxFiles: 3
     })
-  ]
+  );
+}
+
+export const logger = winston.createLogger({
+  level: process.env.LOG_LEVEL || 'info',
+  format: logFormat,
+  transports
 });
 
 // Performance logger

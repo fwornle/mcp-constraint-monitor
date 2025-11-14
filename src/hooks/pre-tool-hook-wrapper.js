@@ -15,6 +15,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 async function processToolHook() {
+  // CRITICAL: Set environment variable to suppress console logging
+  // Hooks MUST be silent (no stdout/stderr) when exiting with code 0
+  process.env.CLAUDE_CODE_HOOK = 'true';
+
   try {
     // Read hook data from stdin (Claude Code format)
     let hookData = '';
