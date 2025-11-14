@@ -121,8 +121,7 @@ async function processToolHook() {
     const result = await preToolHook(toolCall, context);
 
     if (result.continue) {
-      // Tool allowed - exit with success
-      console.log(`✅ Tool ${toolCall.name} passed constraint checks`);
+      // Tool allowed - exit silently with success (hooks MUST be silent on exit 0)
       process.exit(0);
     } else {
       // Should not reach here as preToolHook throws on violations
