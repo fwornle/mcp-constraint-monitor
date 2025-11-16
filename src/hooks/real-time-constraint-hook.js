@@ -108,9 +108,9 @@ class RealTimeConstraintEnforcer {
         ? constraintOverride
         : [constraintOverride];
 
-      if (overrideList.includes(violation.id)) {
+      if (overrideList.includes(violation.constraint_id)) {
         // Log the override for audit trail
-        logger.info(`🔓 CONSTRAINT OVERRIDE: User-initiated override for constraint '${violation.id}'`);
+        logger.info(`🔓 CONSTRAINT OVERRIDE: User-initiated override for constraint '${violation.constraint_id}'`);
         return false; // Don't block this violation
       }
     }
@@ -125,13 +125,13 @@ class RealTimeConstraintEnforcer {
     const overriddenViolations = violations.filter(v => {
       if (!constraintOverride) return false;
       const overrideList = Array.isArray(constraintOverride) ? constraintOverride : [constraintOverride];
-      return overrideList.includes(v.id) && this.config.enforcement?.blocking_levels?.includes(v.severity);
+      return overrideList.includes(v.constraint_id) && this.config.enforcement?.blocking_levels?.includes(v.severity);
     });
 
     if (blockingViolations.length === 0) {
       // If we have overridden violations, log them for user awareness
       if (overriddenViolations.length > 0) {
-        const overriddenIds = overriddenViolations.map(v => v.id).join(', ');
+        const overriddenIds = overriddenViolations.map(v => v.constraint_id).join(', ');
         logger.info(`✅ Tool allowed with constraint override(s): ${overriddenIds}`);
       }
       return null; // No blocking violations

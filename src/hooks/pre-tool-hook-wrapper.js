@@ -7,8 +7,9 @@
  * It integrates with the Real Time Guardrails constraint enforcement system.
  */
 
-import { readFileSync } from 'fs';
+import { readFileSync, existsSync, writeFileSync, unlinkSync } from 'fs';
 import { join, dirname } from 'path';
+import { tmpdir } from 'os';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -66,10 +67,39 @@ async function processToolHook() {
       process.exit(0);
     }
 
-    // Extract constraint overrides if present
+    // Extract constraint overrides from prompt-override-parser state file
     // User can request override by including in their prompt: OVERRIDE_CONSTRAINT: constraint-id
-    // Claude will then inject _constraint_override parameter in tool calls
-    const constraintOverride = toolParams._constraint_override || null;
+    // The prompt-override-parser hook creates a state file that we read here
+    let constraintOverride = toolParams._constraint_override || null;
+
+    // Read override state from temporary file
+    const sessionId = process.env.CLAUDE_SESSION_ID || process.ppid || 'default';
+    const overrideStateFile = join(tmpdir(), `constraint-override-${sessionId}.json`);
+
+    if (existsSync(overrideStateFile)) {
+      try {
+        const stateData = readFileSync(overrideStateFile, 'utf8');
+        const state = JSON.parse(stateData);
+
+        // Check if state is still valid
+        const now = Date.now();
+        const isExpired = now > state.expiresAt || state.promptCount >= state.maxPrompts;
+
+        if (isExpired) {
+          // Clean up expired state
+          unlinkSync(overrideStateFile);
+        } else {
+          // Use overrides from state
+          constraintOverride = state.constraintIds;
+
+          // Increment prompt count
+          state.promptCount += 1;
+          writeFileSync(overrideStateFile, JSON.stringify(state, null, 2));
+        }
+      } catch (error) {
+        console.error('⚠️ Failed to read override state:', error.message);
+      }
+    }
 
     const toolCall = {
       name: toolName,
