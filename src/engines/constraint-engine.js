@@ -165,10 +165,15 @@ export class ConstraintEngine {
         // Build regex flags - always include 'g' for global matching, plus any constraint-specific or extracted flags
         const flags = 'g' + (constraint.flags || '') + extractedFlags;
         const regex = new RegExp(pattern, flags);
-        const matches = content.match(regex);
+
+        // Check if constraint should apply to file path only (not content)
+        const targetText = constraint.applies_to === 'file_path' ? (filePath || '') : content;
+        const matches = targetText.match(regex);
 
         logger.debug(`Testing constraint ${id}`, {
           pattern: constraint.pattern,
+          appliesTo: constraint.applies_to || 'content',
+          targetLength: targetText?.length,
           matches: matches ? matches.length : 0,
           firstMatch: matches ? matches[0] : null
         });
