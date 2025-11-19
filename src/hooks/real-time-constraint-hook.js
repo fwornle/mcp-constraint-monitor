@@ -224,7 +224,9 @@ class RealTimeConstraintEnforcer {
       }, null, 2);
     }
 
-    const checkResult = await this.checkConstraintsDirectly(contentToCheck, 'tool_call', context);
+    // CRITICAL: Add file path to context so constraint engine can check file-path-only constraints
+    const contextWithFilePath = { ...context, filePath: params.file_path };
+    const checkResult = await this.checkConstraintsDirectly(contentToCheck, 'tool_call', contextWithFilePath);
 
     // Log ALL violations to dashboard BEFORE deciding whether to block
     if (checkResult.violations && checkResult.violations.length > 0) {
