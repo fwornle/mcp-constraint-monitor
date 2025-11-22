@@ -87,6 +87,28 @@ class RealTimeConstraintEnforcer {
         filePath: context.filePath
       });
 
+      // Filter out skill-required constraints if the required skill is active
+      if (context.activeSkills && result.violations) {
+        result.violations = result.violations.filter(violation => {
+          // Check if this is a skill-required constraint
+          const skillRequiredConstraints = [
+            'plantuml-modification-requires-skill',
+            'documentation-style-skill-required',
+            'no-ascii-art-in-docs'
+          ];
+
+          if (skillRequiredConstraints.includes(violation.constraint_id)) {
+            // Check if documentation-style skill is active
+            if (context.activeSkills['documentation-style']) {
+              logger.info(`✅ Skipping ${violation.constraint_id} - documentation-style skill is active`);
+              return false; // Filter out this violation
+            }
+          }
+
+          return true; // Keep this violation
+        });
+      }
+
       return result;
     } catch (error) {
       logger.error('🔴 Constraint checking error:', error.message);
@@ -225,7 +247,12 @@ class RealTimeConstraintEnforcer {
     }
 
     // CRITICAL: Add file path to context so constraint engine can check file-path-only constraints
-    const contextWithFilePath = { ...context, filePath: params.file_path };
+    // Also pass activeSkills from context so skill-required constraints can be skipped if skill is active
+    const contextWithFilePath = {
+      ...context,
+      filePath: params.file_path,
+      activeSkills: context.activeSkills || {}
+    };
     const checkResult = await this.checkConstraintsDirectly(contentToCheck, 'tool_call', contextWithFilePath);
 
     // Log ALL violations to dashboard BEFORE deciding whether to block

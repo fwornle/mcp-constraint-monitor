@@ -296,6 +296,92 @@ export class ConstraintEngine {
     };
   }
 
+  /**
+   * Validate post-edit constraints (e.g., PNG generation after PUML edits)
+   * @param {string} filePath - Path to the edited file
+   * @returns {Promise<Array>} - Array of violations
+   */
+  async validatePostFileEdit(filePath) {
+    const violations = [];
+
+    // Find constraints with post_file_edit validation_type
+    for (const [id, constraint] of this.constraints.entries()) {
+      if (!constraint.enabled || constraint.validation_type !== 'post_file_edit') {
+        continue;
+      }
+
+      // Check if file pattern matches
+      if (constraint.file_pattern) {
+        const regex = new RegExp(constraint.file_pattern);
+        if (!regex.test(filePath)) {
+          continue;
+        }
+      }
+
+      try {
+        // Handle file timestamp comparison check
+        if (constraint.check_type === 'file_timestamp_comparison') {
+          const dirname = path.dirname(filePath);
+          const basename = path.basename(filePath, path.extname(filePath));
+
+          // Build PNG path from pattern
+          let pngPath = constraint.png_path_pattern || '{{dirname}}/{{basename}}.png';
+          pngPath = pngPath
+            .replace('{{dirname}}', dirname)
+            .replace('{{basename}}', basename);
+
+          // Check if PNG exists
+          if (!fs.existsSync(pngPath)) {
+            violations.push({
+              constraint_id: id,
+              message: constraint.message
+                .replace('{{file_path}}', filePath)
+                .replace('{{png_path}}', pngPath)
+                .replace('{{dirname}}', dirname)
+                .replace('{{basename}}', basename),
+              severity: constraint.severity,
+              file_path: filePath,
+              expected_png: pngPath,
+              detected_at: new Date().toISOString(),
+              reason: 'PNG file does not exist'
+            });
+            continue;
+          }
+
+          // Check timestamps
+          const pumlStat = fs.statSync(filePath);
+          const pngStat = fs.statSync(pngPath);
+
+          const ageDiffMs = pumlStat.mtime.getTime() - pngStat.mtime.getTime();
+          const maxAgeMs = (constraint.max_age_seconds || 120) * 1000;
+
+          if (ageDiffMs > maxAgeMs) {
+            violations.push({
+              constraint_id: id,
+              message: constraint.message
+                .replace('{{file_path}}', filePath)
+                .replace('{{png_path}}', pngPath)
+                .replace('{{dirname}}', dirname)
+                .replace('{{basename}}', basename),
+              severity: constraint.severity,
+              file_path: filePath,
+              expected_png: pngPath,
+              puml_modified: pumlStat.mtime.toISOString(),
+              png_modified: pngStat.mtime.toISOString(),
+              age_diff_seconds: Math.floor(ageDiffMs / 1000),
+              detected_at: new Date().toISOString(),
+              reason: 'PNG file is outdated (older than PUML modification)'
+            });
+          }
+        }
+      } catch (error) {
+        logger.error(`Error validating post-edit constraint ${id}:`, error);
+      }
+    }
+
+    return violations;
+  }
+
   async getViolationHistory(options) {
     const { limit = 10, sessionId } = options;
     

@@ -67,13 +67,46 @@ async function processToolHook() {
       process.exit(0);
     }
 
+    // Track skill invocations for skill-required constraints
+    const sessionId = process.env.CLAUDE_SESSION_ID || process.ppid || 'default';
+    const skillStateFile = join(tmpdir(), `skill-invocations-${sessionId}.json`);
+
+    // Detect Skill tool invocations and track them
+    if (toolName === 'Skill' && toolParams.skill) {
+      const skillName = toolParams.skill;
+      const now = Date.now();
+      const skillState = {
+        skills: {
+          [skillName]: {
+            invokedAt: now,
+            expiresAt: now + (30 * 60 * 1000) // 30 minutes
+          }
+        }
+      };
+
+      try {
+        // If state file exists, merge with existing skills
+        if (existsSync(skillStateFile)) {
+          const existingState = JSON.parse(readFileSync(skillStateFile, 'utf8'));
+          skillState.skills = { ...existingState.skills, ...skillState.skills };
+        }
+
+        writeFileSync(skillStateFile, JSON.stringify(skillState, null, 2));
+        console.error(`✅ Skill invoked: ${skillName} (valid for 30 minutes)`);
+      } catch (error) {
+        console.error('⚠️ Failed to track skill invocation:', error.message);
+      }
+
+      // Allow skill invocation to proceed (no constraints on Skill tool itself)
+      process.exit(0);
+    }
+
     // Extract constraint overrides from prompt-override-parser state file
     // User can request override by including in their prompt: OVERRIDE_CONSTRAINT: constraint-id
     // The prompt-override-parser hook creates a state file that we read here
     let constraintOverride = toolParams._constraint_override || null;
 
     // Read override state from temporary file
-    const sessionId = process.env.CLAUDE_SESSION_ID || process.ppid || 'default';
     const overrideStateFile = join(tmpdir(), `constraint-override-${sessionId}.json`);
 
     if (existsSync(overrideStateFile)) {
@@ -134,6 +167,29 @@ async function processToolHook() {
 
     const detectedProject = detectProjectFromFilePath(toolCall);
 
+    // Read active skills from skill state file
+    let activeSkills = {};
+    if (existsSync(skillStateFile)) {
+      try {
+        const skillState = JSON.parse(readFileSync(skillStateFile, 'utf8'));
+        const now = Date.now();
+
+        // Filter expired skills and collect active ones
+        for (const [skillName, skillData] of Object.entries(skillState.skills || {})) {
+          if (now < skillData.expiresAt) {
+            activeSkills[skillName] = skillData;
+          }
+        }
+
+        // Clean up expired skills
+        if (Object.keys(activeSkills).length !== Object.keys(skillState.skills || {}).length) {
+          writeFileSync(skillStateFile, JSON.stringify({ skills: activeSkills }, null, 2));
+        }
+      } catch (error) {
+        console.error('⚠️ Failed to read skill state:', error.message);
+      }
+    }
+
     // Import and use the constraint enforcer
     const { preToolHook } = await import('./real-time-constraint-hook.js');
 
@@ -144,7 +200,8 @@ async function processToolHook() {
       sessionId: toolData.sessionId || 'unknown',
       toolName: toolCall.name,
       project: detectedProject,  // Add detected project to context
-      constraintOverride: constraintOverride  // Pass user-initiated override
+      constraintOverride: constraintOverride,  // Pass user-initiated override
+      activeSkills: activeSkills  // Pass active skills to constraint checker
     };
 
     // Check constraints
