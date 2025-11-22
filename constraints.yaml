@@ -53,7 +53,7 @@ constraints:
     suggestion: Add proper error handling or at minimum log the error
   - id: proper-function-naming
     group: code_quality
-    pattern: function\\s+[a-z][a-zA-Z0-9]*\\s*\\(
+    pattern: function\\s+[a-z]
     message: Function names should start with a verb (camelCase)
     severity: info
     enabled: true
