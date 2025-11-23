@@ -237,6 +237,14 @@ class RealTimeConstraintEnforcer {
       if (params.file_path) {
         contentToCheck += '\n' + params.file_path;
       }
+    } else if (toolCall.name === 'Bash') {
+      // SPECIAL CASE: For Bash tool calls, extract just the command for constraint checking
+      // This allows command-specific constraints like no-ukb-bash-command to work properly
+      contentToCheck = params.command || params.script || '';
+      // Also include description for context
+      if (params.description) {
+        contentToCheck += '\n// ' + params.description;
+      }
     } else {
       // For other tools, serialize the entire call
       contentToCheck = JSON.stringify({
