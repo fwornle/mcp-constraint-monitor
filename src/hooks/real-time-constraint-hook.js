@@ -222,14 +222,13 @@ class RealTimeConstraintEnforcer {
     // For Write/Edit tool calls, check the content being written
     if (['Write', 'Edit', 'MultiEdit'].includes(toolCall.name)) {
       contentToCheck = params.content || params.new_string || '';
-      // Also check old_string for Edit operations
-      if (params.old_string) {
-        contentToCheck += '\n' + params.old_string;
-      }
-      // For MultiEdit, check all edits
+      // IMPORTANT: DO NOT check old_string - it may contain violations we're trying to fix!
+      // Only check new_string (what's being written) to avoid deadlocks
+
+      // For MultiEdit, check all new_string values (not old_string)
       if (params.edits && Array.isArray(params.edits)) {
         params.edits.forEach(edit => {
-          contentToCheck += '\n' + (edit.new_string || '') + '\n' + (edit.old_string || '');
+          contentToCheck += '\n' + (edit.new_string || '');
         });
       }
 
