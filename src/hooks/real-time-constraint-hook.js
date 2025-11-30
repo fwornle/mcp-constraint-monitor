@@ -167,7 +167,9 @@ class RealTimeConstraintEnforcer {
     ];
 
     blockingViolations.forEach((violation, index) => {
-      lines.push(`**${index + 1}. ${violation.severity.toUpperCase()}: ${violation.message}**`);
+      // Include constraint_id in the message so users can easily request overrides
+      const constraintId = violation.constraint_id ? ` [${violation.constraint_id}]` : '';
+      lines.push(`**${index + 1}. ${violation.severity.toUpperCase()}${constraintId}: ${violation.message}**`);
       if (violation.suggestion) {
         lines.push(`   💡 Suggestion: ${violation.suggestion}`);
       }
@@ -178,6 +180,7 @@ class RealTimeConstraintEnforcer {
     });
 
     lines.push('Please modify your request to comply with these constraints and try again.');
+    lines.push('To override a constraint, include in your prompt: OVERRIDE_CONSTRAINT: <constraint-id>');
     lines.push('');
     lines.push('📊 View detailed constraint information: http://localhost:3030');
 
