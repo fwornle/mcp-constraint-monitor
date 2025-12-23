@@ -42,11 +42,13 @@ const performanceFormat = winston.format.combine(
   })
 );
 
-// CRITICAL: Hooks MUST be silent (no stdout/stderr) when exiting 0
-// Only log to files when running as a Claude Code hook
+// CRITICAL: MCP servers use stdio for JSON-RPC - NO stdout logging allowed!
+// Console logging is only safe when running interactively (TTY)
+// When running as MCP server or hook, stdin is a pipe (isTTY is undefined/false)
+const isRunningAsMcpServer = !process.stdin.isTTY;
 const isRunningAsHook = process.env.CLAUDE_CODE_HOOK === 'true' ||
-                        process.stdin.isTTY === false ||
                         process.argv[1]?.includes('hook-wrapper');
+const shouldSuppressConsole = isRunningAsMcpServer || isRunningAsHook;
 
 const transports = [
   // General log file
@@ -65,10 +67,13 @@ const transports = [
   })
 ];
 
-// Only add console transport if NOT running as a hook
-if (!isRunningAsHook) {
+// Only add console transport if running interactively (TTY mode)
+// CRITICAL: Console transport writes to stdout by default, which corrupts MCP JSON-RPC
+if (!shouldSuppressConsole) {
   transports.unshift(
     new winston.transports.Console({
+      // CRITICAL: Force stderr to avoid corrupting MCP stdio stream
+      stderrLevels: ['error', 'warn', 'info', 'debug', 'verbose', 'silly'],
       format: winston.format.combine(
         winston.format.colorize(),
         logFormat

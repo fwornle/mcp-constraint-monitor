@@ -257,6 +257,36 @@ class ConstraintMonitorServer {
 
   async run() {
     const transport = new StdioServerTransport();
+
+    // Handle stdin lifecycle events for graceful connection handling
+    process.stdin.on('end', () => {
+      logger.info('stdin ended - connection closing');
+    });
+
+    process.stdin.on('close', () => {
+      logger.info('stdin closed - exiting gracefully');
+      process.exit(0);
+    });
+
+    // Handle stdout errors (broken pipe when parent closes)
+    process.stdout.on('error', (err) => {
+      if (err.code === 'EPIPE') {
+        logger.info('stdout pipe closed - exiting gracefully');
+        process.exit(0);
+      } else {
+        logger.error('stdout error:', err);
+      }
+    });
+
+    // Handle transport lifecycle
+    transport.onclose = () => {
+      logger.info('Transport closed');
+    };
+
+    transport.onerror = (err) => {
+      logger.error('Transport error:', err);
+    };
+
     await this.server.connect(transport);
     logger.info('Constraint Monitor MCP Server running on stdio');
   }
