@@ -417,20 +417,20 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const [,, action, content] = process.argv;
   
   if (action === 'test-prompt') {
-    const testPrompt = content || 'console.log("test")';
+    const testPrompt = content || 'console.error("test")';
     prePromptHook(testPrompt).then(result => {
-      console.log('Prompt check result:', result);
+      console.error('Prompt check result:', result);
     }).catch(error => {
       console.error('Prompt blocked:', error.message);
     });
   } else if (action === 'test-tool') {
     const testTool = { name: 'Write', parameters: { content: 'var x = 1;' } };
     preToolHook(testTool).then(result => {
-      console.log('Tool check result:', result);
+      console.error('Tool check result:', result);
     }).catch(error => {
       console.error('Tool blocked:', error.message);
     });
   } else {
-    console.log('Usage: node real-time-constraint-hook.js [test-prompt|test-tool] [content]');
+    console.error('Usage: node real-time-constraint-hook.js [test-prompt|test-tool] [content]');
   }
 }

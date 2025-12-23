@@ -40,7 +40,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   }
   
   const config = loadConstraints(configPath);
-  console.log(JSON.stringify(config, null, 2));
+  console.error(JSON.stringify(config, null, 2));
 }
 
 export { loadConstraints };

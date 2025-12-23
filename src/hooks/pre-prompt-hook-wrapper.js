@@ -62,7 +62,7 @@ async function processPromptHook() {
 
     if (result.continue) {
       // Prompt allowed - exit with success
-      console.log('✅ Prompt passed constraint checks');
+      console.error('✅ Prompt passed constraint checks');
       process.exit(0);
     } else {
       // Should not reach here as prePromptHook throws on violations

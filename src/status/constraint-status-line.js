@@ -507,7 +507,7 @@ async function main() {
   try {
     // Set timeout to prevent hanging
     const timeout = setTimeout(() => {
-      console.log(JSON.stringify({
+      console.error(JSON.stringify({
         text: '⚠️CM:TIMEOUT',
         color: 'red',
         tooltip: 'Constraint Monitor: Status check timed out'
@@ -519,10 +519,10 @@ async function main() {
     const status = await statusLine.generateStatus();
     
     clearTimeout(timeout);
-    console.log(JSON.stringify(status));
+    console.error(JSON.stringify(status));
     process.exit(0);
   } catch (error) {
-    console.log(JSON.stringify({
+    console.error(JSON.stringify({
       text: '⚠️CM:ERR',
       color: 'red', 
       tooltip: `Constraint Monitor Error: ${error.message}`

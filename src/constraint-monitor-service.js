@@ -185,7 +185,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         options.healthCheckInterval = parseInt(args[++i]) * 1000;
         break;
       case '--help':
-        console.log(`
+        console.error(`
 Constraint Monitoring Service
 
 Usage: node constraint-monitor-service.js [options]
