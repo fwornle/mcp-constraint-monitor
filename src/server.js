@@ -2,7 +2,7 @@
 
 /**
  * MCP Constraint Monitor Server
- * 
+ *
  * Universal MCP server for real-time coding constraint monitoring and live guardrails.
  * Can be added to any Claude Code project for automated compliance checking.
  */
@@ -20,6 +20,19 @@ import { ConstraintEngine } from './engines/constraint-engine.js';
 import { StatusGenerator } from './status/status-generator.js';
 import { ConfigManager } from './utils/config-manager.js';
 import { logger } from './utils/logger.js';
+
+// CRITICAL: Global error handlers must be set up FIRST
+// These prevent unhandled errors from crashing the MCP server
+process.on('uncaughtException', (error) => {
+  logger.error('UNCAUGHT EXCEPTION - Server will attempt to continue:', error);
+  // Don't exit - try to keep server running for MCP stability
+});
+
+process.on('unhandledRejection', (reason, _promise) => {
+  const error = reason instanceof Error ? reason : new Error(String(reason));
+  logger.error('UNHANDLED PROMISE REJECTION - Server will continue:', error);
+  // Don't exit - try to keep server running for MCP stability
+});
 
 class ConstraintMonitorServer {
   constructor() {
@@ -258,21 +271,22 @@ class ConstraintMonitorServer {
   async run() {
     const transport = new StdioServerTransport();
 
-    // Handle stdin lifecycle events for graceful connection handling
+    // Handle stdin lifecycle events - DON'T exit immediately to allow recovery
     process.stdin.on('end', () => {
-      logger.info('stdin ended - connection closing');
+      logger.info('stdin ended - will wait for transport to handle');
+      // Don't exit - let the transport handle reconnection
     });
 
     process.stdin.on('close', () => {
-      logger.info('stdin closed - exiting gracefully');
-      process.exit(0);
+      logger.info('stdin closed - transport will handle cleanup');
+      // Don't exit immediately - the transport may still be processing
     });
 
     // Handle stdout errors (broken pipe when parent closes)
     process.stdout.on('error', (err) => {
       if (err.code === 'EPIPE') {
-        logger.info('stdout pipe closed - exiting gracefully');
-        process.exit(0);
+        logger.info('stdout pipe closed - waiting for graceful shutdown');
+        // Don't exit immediately on EPIPE - let transport handle it
       } else {
         logger.error('stdout error:', err);
       }
@@ -280,11 +294,14 @@ class ConstraintMonitorServer {
 
     // Handle transport lifecycle
     transport.onclose = () => {
-      logger.info('Transport closed');
+      logger.info('Transport closed - exiting');
+      // Only exit when the transport explicitly closes
+      process.exit(0);
     };
 
     transport.onerror = (err) => {
       logger.error('Transport error:', err);
+      // Don't exit on transport errors - may be temporary
     };
 
     await this.server.connect(transport);
