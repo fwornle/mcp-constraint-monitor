@@ -40,7 +40,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   }
   
   const config = loadConstraints(configPath);
-  console.error(JSON.stringify(config, null, 2));
+  // CRITICAL: Output to stdout so execSync can capture it
+  // Bug fixed 2026-01-01: Was console.error (stderr) causing config load failures
+  console.log(JSON.stringify(config, null, 2));
 }
 
 export { loadConstraints };

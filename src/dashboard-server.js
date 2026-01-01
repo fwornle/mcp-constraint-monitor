@@ -593,16 +593,25 @@ class DashboardServer {
 
     async handleHealthCheck(req, res) {
         try {
+            // FUNCTIONAL ENFORCEMENT CHECK: Actually test the constraint system works
+            const enforcementStatus = await this.testEnforcementHealth();
+
             const status = {
-                status: 'healthy',
+                status: enforcementStatus.healthy ? 'healthy' : 'unhealthy',
                 timestamp: new Date().toISOString(),
                 services: {
                     api: 'operational',
                     constraint_engine: this.constraintEngine ? 'operational' : 'degraded',
                     file_watcher: this.constraintEngine?.getFileWatcherStatus().isRunning ? 'operational' : 'stopped'
                 },
+                enforcement: enforcementStatus,
                 version: '1.0.0'
             };
+
+            // Return 503 if enforcement is broken (so health checks catch it)
+            if (!enforcementStatus.healthy) {
+                return res.status(503).json(status);
+            }
 
             res.json(status);
         } catch (error) {
@@ -612,6 +621,65 @@ class DashboardServer {
                 error: error.message,
                 timestamp: new Date().toISOString()
             });
+        }
+    }
+
+    /**
+     * FUNCTIONAL TEST: Actually verify constraint enforcement is working
+     * This catches bugs like stdout/stderr issues that break config loading
+     */
+    async testEnforcementHealth() {
+        try {
+            const { execSync } = await import('child_process');
+            const testScript = join(__dirname, 'config/load-constraints.js');
+            const configPath = process.env.CONSTRAINT_CONFIG_PATH ||
+                               join(__dirname, '../../../.constraint-monitor.yaml');
+
+            // Test 1: Config loads successfully (catches stdout/stderr bugs)
+            let configLoaded = false;
+            let configError = null;
+            let constraintCount = 0;
+            let enabledCount = 0;
+
+            try {
+                const result = execSync(`node "${testScript}" "${configPath}"`, {
+                    encoding: 'utf8',
+                    timeout: 3000
+                });
+                const config = JSON.parse(result);
+                configLoaded = true;
+                constraintCount = config.constraints?.length || 0;
+                enabledCount = config.constraints?.filter(c => c.enabled).length || 0;
+            } catch (err) {
+                configError = err.message;
+            }
+
+            // Test 2: Enforcement is enabled in config
+            const enforcementEnabled = this.constraintEngine?.config?.enforcement?.enabled ?? false;
+
+            // Test 3: At least one constraint is enabled
+            const hasEnabledConstraints = enabledCount > 0;
+
+            // Overall health
+            const healthy = configLoaded && enforcementEnabled && hasEnabledConstraints;
+
+            return {
+                healthy,
+                checks: {
+                    config_loads: { passed: configLoaded, error: configError },
+                    enforcement_enabled: { passed: enforcementEnabled },
+                    has_constraints: { passed: hasEnabledConstraints, count: constraintCount, enabled: enabledCount }
+                },
+                message: healthy
+                    ? `Enforcement active with ${enabledCount}/${constraintCount} constraints enabled`
+                    : configError || 'Enforcement disabled or no constraints loaded'
+            };
+        } catch (error) {
+            return {
+                healthy: false,
+                checks: {},
+                message: `Enforcement test failed: ${error.message}`
+            };
         }
     }
 

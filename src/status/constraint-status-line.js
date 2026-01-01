@@ -519,7 +519,9 @@ async function main() {
     const status = await statusLine.generateStatus();
     
     clearTimeout(timeout);
-    console.error(JSON.stringify(status));
+    // CRITICAL: Output to stdout so combined-status-line can capture it
+    // Bug fixed 2026-01-01: Was console.error (stderr) causing status line to show ❌
+    console.log(JSON.stringify(status));
     process.exit(0);
   } catch (error) {
     console.error(JSON.stringify({
