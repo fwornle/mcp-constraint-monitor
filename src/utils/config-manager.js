@@ -155,6 +155,60 @@ export class ConfigManager {
     return null;
   }
 
+  /**
+   * Get enforcement settings from the constraint config file
+   * Returns the enforcement section with enabled flag, blocking levels, etc.
+   */
+  getEnforcementSettings() {
+    const configPath = this.findProjectConfig();
+
+    if (configPath) {
+      try {
+        const content = readFileSync(configPath, 'utf8');
+        const data = parse(content);
+        // Return enforcement settings with defaults
+        return {
+          enabled: data.enforcement?.enabled ?? true,
+          blocking_levels: data.enforcement?.blocking_levels ?? ['critical', 'error'],
+          warning_levels: data.enforcement?.warning_levels ?? ['warning'],
+          info_levels: data.enforcement?.info_levels ?? ['info'],
+          fail_open: data.enforcement?.fail_open ?? true
+        };
+      } catch (error) {
+        logger.error(`Failed to parse enforcement settings from ${configPath}`, { error: error.message });
+      }
+    }
+
+    // Fallback to constraints.yaml
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+    const constraintsPath = join(__dirname, '../../constraints.yaml');
+
+    if (existsSync(constraintsPath)) {
+      try {
+        const content = readFileSync(constraintsPath, 'utf8');
+        const data = parse(content);
+        return {
+          enabled: data.enforcement?.enabled ?? true,
+          blocking_levels: data.enforcement?.blocking_levels ?? ['critical', 'error'],
+          warning_levels: data.enforcement?.warning_levels ?? ['warning'],
+          info_levels: data.enforcement?.info_levels ?? ['info'],
+          fail_open: data.enforcement?.fail_open ?? true
+        };
+      } catch (error) {
+        logger.error('Failed to parse enforcement settings from constraints.yaml', { error: error.message });
+      }
+    }
+
+    // Default enforcement settings
+    return {
+      enabled: true,
+      blocking_levels: ['critical', 'error'],
+      warning_levels: ['warning'],
+      info_levels: ['info'],
+      fail_open: true
+    };
+  }
+
   getConstraints() {
     // Use shared config discovery logic
     const configPath = this.findProjectConfig();

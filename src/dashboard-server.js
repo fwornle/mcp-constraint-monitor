@@ -655,7 +655,7 @@ class DashboardServer {
             }
 
             // Test 2: Enforcement is enabled in config
-            const enforcementEnabled = this.constraintEngine?.config?.enforcement?.enabled ?? false;
+            const enforcementEnabled = this.config?.getEnforcementSettings()?.enabled ?? false;
 
             // Test 3: At least one constraint is enabled
             const hasEnabledConstraints = enabledCount > 0;
