@@ -95,7 +95,10 @@ constraints:
     suggestion: Use debugging tools and verification commands to identify root causes
   - id: no-evolutionary-names
     group: architecture
-    pattern: (?:class|function|const|let|var)\\s+\\w*(?:V[2-9]|Enhanced|Improved|Better|New|Advanced|Pro|Simplified|Simple|Basic|Lite|Fixed|Patched|Updated|Revised|Modified|Temp|Temporary|Backup|Copy|Duplicate|Clone|Alt|Alternative|Variant|Final|Draft|Test|Experimental)\\w*
+    # Pattern requires evolutionary word to NOT be followed by lowercase letters
+    # This prevents false positives like "isInFinalization" (Final+ization) or "processTest" (Test+ing)
+    # Only matches: myFunctionV2, backupFile, TempData, etc.
+    pattern: (?:class|function|const|let|var)\\s+\\w*(?:V[2-9]|Enhanced|Improved|Better|New|Advanced|Pro|Simplified|Simple|Basic|Lite|Fixed|Patched|Updated|Revised|Modified|Temp|Temporary|Backup|Copy|Duplicate|Clone|Alt|Alternative|Variant|Final|Draft|Test|Experimental)(?![a-z])
     message: Evolutionary naming detected - refactor original instead
     severity: error
     enabled: true
