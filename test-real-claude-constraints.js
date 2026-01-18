@@ -36,7 +36,8 @@ class RealClaudeConstraintTester {
       errors: []
     };
 
-    this.codingRepo = '/Users/q284340/Agentic/coding';
+    // Derive coding root from this file's location (2 levels up from integrations/mcp-constraint-monitor)
+    this.codingRepo = process.env.CODING_TOOLS_PATH || process.env.CODING_REPO || path.resolve(__dirname, '../..');
     this.transcriptDir = path.join(this.codingRepo, '.specstory', 'history');
     this.claudeCommand = path.join(this.codingRepo, 'bin', 'coding');
   }

@@ -315,7 +315,10 @@ class RealTimeConstraintEnforcer {
   async logViolationsToStorage(violations, context, type) {
     try {
       const { readFileSync, writeFileSync } = await import('fs');
-      const violationStoragePath = '/Users/q284340/Agentic/coding/.mcp-sync/violation-history.json';
+      const path = await import('path');
+      // Derive coding root from this file's location (5 levels up from src/hooks/)
+      const codingRoot = process.env.CODING_TOOLS_PATH || process.env.CODING_REPO || path.resolve(__dirname, '../../../../..');
+      const violationStoragePath = path.join(codingRoot, '.mcp-sync', 'violation-history.json');
 
       // Read existing violations
       let existingData = { violations: [] };
