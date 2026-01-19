@@ -139,6 +139,13 @@ constraints:
     severity: info
     enabled: true
     suggestion: Use descriptive names like workflow-sequence.puml, architecture-overview.puml
+  - id: plantuml-no-incremental-naming
+    group: plantuml
+    pattern: "[-_](?:2|3|v2|v3|new|updated|revised|final|copy)\\.(puml|png)$"
+    message: "CRITICAL: Incremental naming in diagrams is forbidden - modify the original file"
+    severity: critical
+    enabled: true
+    suggestion: Instead of creating diagram-name-2.puml, edit diagram-name.puml directly
   - id: image-reference-pattern
     group: documentation
     pattern: "!\\[.*\\]\\((?!docs/images/).*\\.(png|jpg|jpeg|svg)\\)"
