@@ -5,10 +5,14 @@
   "type": "module",
   "main": "src/server.js",
   "bin": {
-    "mcp-constraint-monitor": "src/server.js"
+    "mcp-constraint-monitor": "src/server.js",
+    "mcp-constraint-monitor-sse": "src/sse-server.js",
+    "mcp-constraint-monitor-proxy": "src/stdio-proxy.js"
   },
   "scripts": {
     "start": "node src/server.js",
+    "start:sse": "node src/sse-server.js",
+    "start:proxy": "node src/stdio-proxy.js",
     "api": "export $(grep '^CONSTRAINT_.*=' ../../.env.ports | sed 's/#.*//' | xargs) && PORT=$CONSTRAINT_API_PORT node src/dashboard-server.js",
     "dashboard": "cd dashboard && npm run dev",
     "setup": "node scripts/setup.js",

@@ -43,6 +43,50 @@ node scripts/global-service-coordinator.js --daemon
 
 3. **View dashboard**: http://localhost:3030
 
+### Docker Deployment (HTTP/SSE Mode)
+
+For containerized deployments, the MCP server supports HTTP/SSE transport:
+
+```bash
+# Start as SSE server (Docker mode)
+npm run sse-server
+
+# Or directly:
+node src/sse-server.js
+```
+
+**HTTP/SSE Endpoints:**
+- `GET /health` - Health check endpoint
+- `GET /sse` - Server-Sent Events connection
+- `POST /messages` - JSON-RPC message endpoint
+
+**Port Configuration:**
+- MCP SSE Server: `3849` (configurable via `CONSTRAINT_MONITOR_SSE_PORT`)
+- Dashboard UI: `3030` (via `CONSTRAINT_DASHBOARD_PORT`)
+- API Backend: `3031` (via `CONSTRAINT_API_PORT`)
+
+**Health Check:**
+```bash
+curl http://localhost:3849/health
+```
+
+**Claude Code Integration (Docker Mode):**
+
+In Docker mode, Claude connects via a lightweight stdio proxy:
+```json
+{
+  "constraint-monitor": {
+    "command": "node",
+    "args": ["path/to/src/stdio-proxy.js"],
+    "env": {
+      "CONSTRAINT_MONITOR_SSE_URL": "http://localhost:3849"
+    }
+  }
+}
+```
+
+See the parent [Docker Deployment Guide](../../docker/README.md) for full containerization setup.
+
 ## Documentation
 
 ### Core Documentation
