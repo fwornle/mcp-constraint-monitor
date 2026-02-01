@@ -33,10 +33,35 @@ constraints:
   - id: no-console-log
     group: code_quality
     pattern: console\.log
-    message: Use Logger.log() instead of console.log for better log management
+    message: Use unified Logger instead of console methods for structured logging
     severity: warning
     enabled: true
-    suggestion: "Replace with: Logger.log('info', 'category', message)"
+    suggestion: |
+      Backend (Node.js): import { createLogger } from '../lib/logging/Logger.js'; const logger = createLogger('category'); logger.info(message);
+      Frontend (React): import { Logger } from '../utils/logging/Logger'; Logger.log('info', 'category', message);
+      Config: config/logging-config.json (backend), per-app config (frontend)
+
+  - id: no-console-error
+    group: code_quality
+    pattern: console\.error
+    message: Use unified Logger.error() instead of console.error for structured error logging
+    severity: warning
+    enabled: true
+    suggestion: |
+      Backend (Node.js): import { createLogger } from '../lib/logging/Logger.js'; logger.error(message, { error: err.message });
+      Frontend (React): import { Logger } from '../utils/logging/Logger'; Logger.log('error', 'category', message, { error });
+      Exceptions: CLI tools may use process.stderr.write() for direct output
+
+  - id: no-console-warn
+    group: code_quality
+    pattern: console\.warn
+    message: Use unified Logger.warn() instead of console.warn for structured warning logging
+    severity: warning
+    enabled: true
+    suggestion: |
+      Backend (Node.js): import { createLogger } from '../lib/logging/Logger.js'; logger.warn(message, meta);
+      Frontend (React): import { Logger } from '../utils/logging/Logger'; Logger.log('warn', 'category', message);
+      Note: Backend config at config/logging-config.json, frontend config per app
   - id: no-var-declarations
     group: code_quality
     pattern: \bvar\s+
