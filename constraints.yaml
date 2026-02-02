@@ -36,6 +36,7 @@ constraints:
     message: Use unified Logger instead of console methods for structured logging
     severity: warning
     enabled: true
+    file_pattern: \.(js|ts|jsx|tsx)$
     suggestion: |
       Backend (Node.js): import { createLogger } from '../lib/logging/Logger.js'; const logger = createLogger('category'); logger.info(message);
       Frontend (React): import { Logger } from '../utils/logging/Logger'; Logger.log('info', 'category', message);
@@ -47,6 +48,7 @@ constraints:
     message: Use unified Logger.error() instead of console.error for structured error logging
     severity: warning
     enabled: true
+    file_pattern: \.(js|ts|jsx|tsx)$
     suggestion: |
       Backend (Node.js): import { createLogger } from '../lib/logging/Logger.js'; logger.error(message, { error: err.message });
       Frontend (React): import { Logger } from '../utils/logging/Logger'; Logger.log('error', 'category', message, { error });
@@ -58,6 +60,7 @@ constraints:
     message: Use unified Logger.warn() instead of console.warn for structured warning logging
     severity: warning
     enabled: true
+    file_pattern: \.(js|ts|jsx|tsx)$
     suggestion: |
       Backend (Node.js): import { createLogger } from '../lib/logging/Logger.js'; logger.warn(message, meta);
       Frontend (React): import { Logger } from '../utils/logging/Logger'; Logger.log('warn', 'category', message);
@@ -68,6 +71,7 @@ constraints:
     message: Use 'let' or 'const' instead of 'var'
     severity: warning
     enabled: true
+    file_pattern: \.(js|ts|jsx|tsx)$
     suggestion: Use 'let' for mutable variables, 'const' for immutable
   - id: proper-error-handling
     group: code_quality
