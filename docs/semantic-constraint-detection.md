@@ -69,8 +69,8 @@ The system automatically routes constraints to appropriate models:
   'no-parallel-files': 'groq/qwen-2.5-32b-instruct',
 
   // Security analysis - Anthropic Claude
-  'no-hardcoded-secrets': 'anthropic/claude-3-haiku-20240307',
-  'no-eval-usage': 'anthropic/claude-3-haiku-20240307',
+  'no-hardcoded-secrets': 'anthropic/claude-haiku-4-5',
+  'no-eval-usage': 'anthropic/claude-haiku-4-5',
 
   // Language/intent analysis - balanced
   'debug-not-speculate': 'groq/llama-3.3-70b-versatile',
@@ -86,7 +86,7 @@ Set API keys for model providers:
 
 ```bash
 # Groq (required for default configuration)
-export GROK_API_KEY="your-groq-api-key"
+export GROQ_API_KEY="your-groq-api-key"
 
 # Optional: Anthropic Claude
 export ANTHROPIC_API_KEY="your-anthropic-api-key"

@@ -142,8 +142,8 @@ Current regex-based pattern matching has significant limitations:
 ```javascript
 class SemanticDetector {
   constructor(config) {
-    this.haiku = new AnthropicClient({ model: 'claude-3-haiku-20240307' })
-    this.gemini = new GeminiClient({ model: 'gemini-1.5-flash' })
+    this.haiku = new AnthropicClient({ model: 'claude-haiku-4-5' })
+    this.gemini = new GeminiClient({ model: 'gemini-2.5-flash' })
     this.cache = new LRUCache({ max: 1000, ttl: 3600000 }) // 1hr cache
   }
 
