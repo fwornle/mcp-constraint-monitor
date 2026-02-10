@@ -33,9 +33,9 @@ export class ConfigManager {
         maxViolations: 100
       },
       api: {
-        grok: {
-          apiKey: process.env.GROK_API_KEY,
-          model: 'grok-2-1212'
+        groq: {
+          apiKey: process.env.GROQ_API_KEY,
+          model: 'llama-3.3-70b-versatile'
         }
       }
     };

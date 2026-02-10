@@ -4,7 +4,7 @@ import { logger, PerformanceTimer } from '../utils/logger.js';
 export class GrokSemanticEngine {
   constructor(config = {}) {
     this.config = {
-      apiKey: config.apiKey || process.env.GROK_API_KEY,
+      apiKey: config.apiKey || process.env.GROQ_API_KEY,
       model: config.model || 'grok-2-1212', // 1000+ tokens/sec
       maxTokens: config.maxTokens || 200,
       temperature: config.temperature || 0.1,
@@ -13,7 +13,7 @@ export class GrokSemanticEngine {
     };
 
     if (!this.config.apiKey) {
-      throw new Error('GROK_API_KEY environment variable is required');
+      throw new Error('GROQ_API_KEY environment variable is required');
     }
 
     this.grok = new Groq({
