@@ -101,7 +101,7 @@ class DashboardLauncher {
             
             // Fallback: show URL in console
             console.log('\n' + '═'.repeat(60));
-            console.log('🛡️  CONSTRAINT MONITOR DASHBOARD');
+            console.log('🔒  CONSTRAINT MONITOR DASHBOARD');
             console.log('═'.repeat(60));
             console.log(`📱 Dashboard URL: ${url}`);
             console.log(`🔗 API Endpoint: http://localhost:${this.port}/api`);

@@ -692,7 +692,7 @@ ${detectedCount >= 15 && blockedCount >= 3 ?
     }
 
     if (blockedCount > 0) {
-      console.log('🛡️  BLOCKING CONFIRMED: Real prevention in actual Claude sessions');
+      console.log('🔒  BLOCKING CONFIRMED: Real prevention in actual Claude sessions');
     } else {
       console.log('🤔 BLOCKING UNCLEAR: No critical violations blocked');
     }

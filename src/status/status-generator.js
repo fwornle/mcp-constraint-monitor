@@ -67,7 +67,7 @@ export class StatusGenerator {
     if (status.compliance !== undefined) {
       // Convert to percentage if value is between 0-10 (legacy format)
       const compliancePercent = status.compliance <= 10 ? status.compliance * 10 : status.compliance;
-      parts.push(`🛡️ ${compliancePercent.toFixed(0)}%`);
+      parts.push(`🔒 ${compliancePercent.toFixed(0)}%`);
     }
     
     // Trajectory status removed for conciseness - shield symbol is sufficient

@@ -117,7 +117,7 @@ async function testDatabases() {
 }
 
 async function main() {
-  console.log('🛡️  MCP Constraint Monitor Setup\n');
+  console.log('🔒  MCP Constraint Monitor Setup\n');
   
   try {
     await setupDirectories();

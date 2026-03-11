@@ -55,7 +55,7 @@ class ConstraintStatusLine {
         critical: 'red'
       },
       icons: {
-        shield: '🛡️',
+        shield: '🔒',
         warning: '⚠️', 
         trajectory: '📈',
         blocked: '🚫'
@@ -403,7 +403,7 @@ class ConstraintStatusLine {
   }
 
   buildTooltip(data) {
-    const lines = ['🛡️ Constraint Monitor Status'];
+    const lines = ['🔒 Constraint Monitor Status'];
     lines.push('━'.repeat(28));
     
     // Compliance section - now properly shows percentage
