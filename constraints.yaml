@@ -184,11 +184,19 @@ constraints:
     suggestion: "Move images to docs/images/ and update markdown references: ![Description](docs/images/filename.png)"
   - id: documentation-filename-format
     group: documentation
-    pattern: "[A-Z][a-z]+[A-Z].*\\.md$"
-    message: "Documentation files should use kebab-case naming: feature-name.md"
+    applies_to: file_path
+    pattern: "(?:docs|mkdocs)/.*(?:[A-Z][a-z]+[A-Z]|[A-Z]{2,}(?!\\.))[^/]*\\.md$"
+    message: "Documentation files should use kebab-case naming: feature-name.md (only README.md and CHANGELOG.md may use uppercase)"
     severity: info
     enabled: true
     suggestion: "Rename to kebab-case: my-feature-docs.md instead of MyFeatureDocs.md"
+    exceptions:
+      - path: "**/README.md"
+      - path: "**/CHANGELOG.md"
+      - path: "**/.planning/**"
+      - path: "**/skills/**"
+      - path: "**/.claude/**"
+      - path: "**/.agents/**"
   - id: update-main-readme
     group: documentation
     pattern: (?i)readme.*(?:update|modify|change).*(?:structure|format|content)
