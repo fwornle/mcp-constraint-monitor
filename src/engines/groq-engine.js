@@ -1,5 +1,6 @@
 import Groq from 'groq-sdk'; // Note: Using for XAI/Grok API compatibility
 import { logger, PerformanceTimer } from '../utils/logger.js';
+import { reportUsageCost } from '../../../../lib/utils/usage-cost-reporter.js';
 
 export class GrokSemanticEngine {
   constructor(config = {}) {
@@ -58,6 +59,17 @@ export class GrokSemanticEngine {
         temperature: this.config.temperature,
         stop: ["###", "---"] // Early stopping for performance
       });
+
+      // Report usage to central BudgetTracker
+      if (completion.usage) {
+        reportUsageCost({
+          provider: 'groq',
+          model: this.config.model,
+          inputTokens: completion.usage.prompt_tokens || 0,
+          outputTokens: completion.usage.completion_tokens || 0,
+          source: 'mcp-constraint-monitor:analyzeInteraction',
+        }).catch(err => logger.warn('Failed to report usage cost:', err.message));
+      }
 
       const analysis = this.parseAnalysisResponse(completion.choices[0].message.content);
       
@@ -254,6 +266,17 @@ Respond with JSON array of violations (empty if none):
         temperature: 0.1
       });
 
+      // Report usage to central BudgetTracker
+      if (completion.usage) {
+        reportUsageCost({
+          provider: 'groq',
+          model: this.config.model,
+          inputTokens: completion.usage.prompt_tokens || 0,
+          outputTokens: completion.usage.completion_tokens || 0,
+          source: 'mcp-constraint-monitor:analyzeSemanticConstraints',
+        }).catch(err => logger.warn('Failed to report usage cost:', err.message));
+      }
+
       const response = completion.choices[0].message.content;
       const jsonMatch = response.match(/\[[\s\S]*\]/);
       
@@ -316,6 +339,17 @@ Respond with JSON array of violations (empty if none):
         max_tokens: 5,
         temperature: 0
       });
+
+      // Report usage to central BudgetTracker
+      if (completion.usage) {
+        reportUsageCost({
+          provider: 'groq',
+          model: this.config.model,
+          inputTokens: completion.usage.prompt_tokens || 0,
+          outputTokens: completion.usage.completion_tokens || 0,
+          source: 'mcp-constraint-monitor:healthCheck',
+        }).catch(err => logger.warn('Failed to report usage cost:', err.message));
+      }
 
       const duration = timer.end('completed');
       const isHealthy = completion.choices[0].message.content.includes('OK');
