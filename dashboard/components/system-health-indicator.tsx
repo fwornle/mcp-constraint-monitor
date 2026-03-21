@@ -43,7 +43,17 @@ export default function SystemHealthIndicator() {
           setHealth(result.data)
         }
       } catch (error) {
-        console.error('Failed to fetch system health:', error)
+        // API unreachable — show critical status so the user knows the backend is down
+        setHealth({
+          overall_status: 'critical',
+          coordinator: { status: 'unreachable', pid: null, uptime: null },
+          watchdog: { status: 'unknown', last_check: null },
+          projects: [],
+          services: {
+            dashboard: { status: 'operational', port: CONFIG.DASHBOARD_PORT },
+            api: { status: 'unreachable', port: CONFIG.API_PORT }
+          }
+        })
       } finally {
         setLoading(false)
       }
