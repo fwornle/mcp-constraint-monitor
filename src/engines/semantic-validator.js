@@ -1,10 +1,10 @@
-import { LLMService } from '../../../../lib/llm/dist/index.js';
+import { LLMService } from '@rapid/llm-proxy';
 import { logger, PerformanceTimer } from '../utils/logger.js';
 
 /**
  * Configurable Semantic Constraint Validator
  *
- * Delegates LLM calls to the unified LLMService from lib/llm/.
+ * Delegates LLM calls to the unified LLMService from @rapid/llm-proxy.
  * Keeps domain logic: prompt building, response parsing, constraint routing.
  *
  * Usage:
