@@ -1000,18 +1000,18 @@ export default function ConstraintDashboard() {
                     allowDecimals={false}
                   />
                   <Tooltip
-                    formatter={(value: number, name: string, props: unknown) => {
-                      DEBUG_ENABLED && console.log('[DEBUG] Tooltip formatter - value:', value, 'name:', name, 'props:', props)
+                    formatter={((value: number | undefined, name: string | undefined) => {
                       const severityLabels: { [key: string]: string } = {
                         warning: 'Warning',
                         error: 'Error',
                         critical: 'Critical'
                       }
+                      const label = name ? (severityLabels[name] || name) : ''
                       return [
-                        `${value} ${severityLabels[name] || name}${value !== 1 ? 's' : ''}`,
-                        severityLabels[name] || name
+                        `${value ?? 0} ${label}${value !== 1 ? 's' : ''}`,
+                        label
                       ]
-                    }}
+                    }) as never}
                     labelFormatter={(label: unknown, payload: readonly unknown[]) => {
                       if (payload && payload.length > 0) {
                         const data = (payload[0] as { payload?: ChartDataPoint })?.payload
