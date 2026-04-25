@@ -18,7 +18,7 @@ async function processPromptHook() {
   try {
     // Read hook data from stdin (Claude Code format)
     let hookData = '';
-    if (process.stdin.isTTY === false) {
+    if (!process.stdin.isTTY) {
       const chunks = [];
       for await (const chunk of process.stdin) {
         chunks.push(chunk);
