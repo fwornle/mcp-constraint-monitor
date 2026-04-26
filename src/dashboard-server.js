@@ -882,14 +882,39 @@ class DashboardServer {
 
                 if (registryData.coordinator) {
                     const uptime = Date.now() - (registryData.coordinator.startTime || 0);
-                    const isAlive = this.checkProcessAlive(registryData.coordinator.pid);
+
+                    // Two liveness signals:
+                    //   1. PID probe — works on host, fails in containers
+                    //      because Docker's PID namespace is isolated
+                    //      from the host where the coordinator runs.
+                    //   2. Heartbeat freshness — the coordinator stamps
+                    //      `lastHealthCheck` on every tick. The
+                    //      registry file is bind-mounted into the
+                    //      container so mtime+timestamp work across
+                    //      namespaces.
+                    // Status is `operational` when EITHER signal says
+                    // alive. This avoids false-degraded reports when
+                    // running in Docker.
+                    const pidAlive = this.checkProcessAlive(registryData.coordinator.pid);
+                    const interval = registryData.coordinator.healthCheckInterval || 30000;
+                    const lastBeat = registryData.coordinator.lastHealthCheck || 0;
+                    const beatAge = Date.now() - lastBeat;
+                    const heartbeatFresh = lastBeat > 0 && beatAge < interval * 3;
+
+                    let status;
+                    if (pidAlive || heartbeatFresh) status = 'operational';
+                    else if (lastBeat > 0) status = 'degraded'; // stale heartbeat — coordinator stopped beating
+                    else status = 'unknown'; // no heartbeat ever recorded — pre-fix coordinator
 
                     health.coordinator = {
-                        status: isAlive ? 'operational' : 'degraded',
+                        status,
                         pid: registryData.coordinator.pid,
                         uptime: Math.floor(uptime / 1000),
                         startTime: registryData.coordinator.startTime,
-                        healthCheckInterval: registryData.coordinator.healthCheckInterval
+                        healthCheckInterval: interval,
+                        lastHealthCheck: lastBeat || null,
+                        heartbeatAgeSeconds: lastBeat > 0 ? Math.floor(beatAge / 1000) : null,
+                        livenessSignal: pidAlive ? 'pid' : (heartbeatFresh ? 'heartbeat' : 'none'),
                     };
                 }
 
@@ -900,7 +925,12 @@ class DashboardServer {
                     .map(([name, info]) => {
                         const timeSinceHealthCheck = Date.now() - (info.lastHealthCheck || 0);
                         const isActive = info.status === 'active' && timeSinceHealthCheck < 60000;
-                        const monitorAlive = this.checkProcessAlive(info.monitorPid);
+                        const pidAlive = this.checkProcessAlive(info.monitorPid);
+                        // Same dual-signal logic as the coordinator —
+                        // heartbeat freshness lets the dashboard report
+                        // accurate per-project status from inside a
+                        // container without seeing the host's PIDs.
+                        const monitorAlive = pidAlive || isActive;
 
                         return {
                             name,
@@ -908,6 +938,7 @@ class DashboardServer {
                             path: info.projectPath,
                             monitorPid: info.monitorPid,
                             monitorAlive,
+                            livenessSignal: pidAlive ? 'pid' : (isActive ? 'heartbeat' : 'none'),
                             exchanges: info.exchanges || 0,
                             lastHealthCheck: info.lastHealthCheck,
                             timeSinceHealthCheck: Math.floor(timeSinceHealthCheck / 1000)
