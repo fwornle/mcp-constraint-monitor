@@ -47,14 +47,6 @@ constraints:
     enabled: true
     suggestion: "Use descriptive verb-based names: getUserData(), processResults()"
     
-  - id: no-magic-numbers
-    pattern: "\\b\\d{2,}\\b(?!\\s*(px|%|em|rem|vh|vw))"
-    message: "Magic numbers detected - consider using named constants"
-    severity: info
-    enabled: false
-    suggestion: "Define meaningful constants: const MAX_RETRIES = 3"
-
-  # Framework-specific (can be enabled per project)
   - id: react-hooks-deps
     pattern: "useEffect\\([^,]*,\\s*\\[\\]"
     message: "useEffect with empty deps array - verify if this is intentional"

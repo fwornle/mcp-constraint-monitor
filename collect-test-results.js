@@ -44,7 +44,6 @@ const TEST_DEFINITIONS = [
   { id: 10, constraint: 'plantuml-file-location', severity: 'WARNING', keywords: ['PlantUML', '.puml', 'diagram location'] },
   { id: 11, constraint: 'image-reference-pattern', severity: 'WARNING', keywords: ['image', 'screenshot', 'reference'] },
   { id: 12, constraint: 'proper-function-naming', severity: 'INFO', keywords: ['CalculateTotal', 'PascalCase', 'naming'] },
-  { id: 13, constraint: 'no-magic-numbers', severity: 'INFO', keywords: ['magic number', '42', '16'] },
   { id: 14, constraint: 'plantuml-diagram-workflow', severity: 'INFO', keywords: ['PlantUML', 'workflow', 'diagram'] },
   { id: 15, constraint: 'plantuml-readability-guidelines', severity: 'INFO', keywords: ['readability', 'PlantUML', 'nested'] },
   { id: 16, constraint: 'plantuml-file-organization', severity: 'INFO', keywords: ['organization', 'PlantUML', 'multiple'] },

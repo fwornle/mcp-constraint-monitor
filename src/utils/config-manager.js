@@ -119,39 +119,41 @@ export class ConfigManager {
   }
 
   /**
-   * Find project-specific constraint config by searching:
-   * 1. CODING_REPO environment variable (highest priority)
-   * 2. Current working directory
-   * 3. Parent directories up to 5 levels
-   * Returns the first found config path, or null if none found.
+   * Resolve the canonical .constraint-monitor.yaml location.
+   *
+   * Single source of truth: CONSTRAINT_CONFIG_PATH env var, else
+   * $CODING_REPO/.constraint-monitor.yaml. No cwd-walking, no fallbacks
+   * to other config files — when the file is missing we want to fail
+   * loudly, not silently load a different (stale) constraint set.
+   *
+   * Returns the resolved absolute path, or null only if neither env var
+   * is set and no caller-provided default exists.
    */
   findProjectConfig() {
-    const codingRepo = process.env.CODING_REPO;
-    const searchPaths = [];
-
-    // 1. CODING_REPO environment variable (highest priority)
-    if (codingRepo) {
-      searchPaths.push(join(codingRepo, '.constraint-monitor.yaml'));
-    }
-
-    // 2. Current working directory
-    searchPaths.push(join(process.cwd(), '.constraint-monitor.yaml'));
-
-    // 3. Walk up from cwd to find .constraint-monitor.yaml in parent directories
-    let currentDir = process.cwd();
-    for (let i = 0; i < 5; i++) {  // Max 5 levels up
-      const parentDir = dirname(currentDir);
-      if (parentDir === currentDir) break;  // Reached root
-      currentDir = parentDir;
-      searchPaths.push(join(currentDir, '.constraint-monitor.yaml'));
-    }
-
-    // Return first found config path
-    for (const configPath of searchPaths) {
-      if (existsSync(configPath)) {
-        return configPath;
+    const explicit = process.env.CONSTRAINT_CONFIG_PATH;
+    if (explicit) {
+      if (!existsSync(explicit)) {
+        throw new Error(
+          `CONSTRAINT_CONFIG_PATH is set to ${explicit} but the file does not exist. ` +
+          `Refusing to fall back to a different config — fix the path or unset the env var.`
+        );
       }
+      return explicit;
     }
+
+    const codingRepo = process.env.CODING_REPO;
+    if (codingRepo) {
+      const path = join(codingRepo, '.constraint-monitor.yaml');
+      if (!existsSync(path)) {
+        throw new Error(
+          `CODING_REPO=${codingRepo} but ${path} does not exist. ` +
+          `The constraint-monitor needs a single canonical .constraint-monitor.yaml — ` +
+          `create the file or set CONSTRAINT_CONFIG_PATH explicitly.`
+        );
+      }
+      return path;
+    }
+
     return null;
   }
 
@@ -161,87 +163,36 @@ export class ConfigManager {
    */
   getEnforcementSettings() {
     const configPath = this.findProjectConfig();
-
-    if (configPath) {
-      try {
-        const content = readFileSync(configPath, 'utf8');
-        const data = parse(content);
-        // Return enforcement settings with defaults
-        return {
-          enabled: data.enforcement?.enabled ?? true,
-          blocking_levels: data.enforcement?.blocking_levels ?? ['critical', 'error'],
-          warning_levels: data.enforcement?.warning_levels ?? ['warning'],
-          info_levels: data.enforcement?.info_levels ?? ['info'],
-          fail_open: data.enforcement?.fail_open ?? true
-        };
-      } catch (error) {
-        logger.error(`Failed to parse enforcement settings from ${configPath}`, { error: error.message });
-      }
+    if (!configPath) {
+      throw new Error(
+        'No constraint config found. Set CONSTRAINT_CONFIG_PATH or CODING_REPO ' +
+        'so the manager can locate .constraint-monitor.yaml.'
+      );
     }
-
-    // Fallback to constraints.yaml
-    const __dirname = dirname(fileURLToPath(import.meta.url));
-    const constraintsPath = join(__dirname, '../../constraints.yaml');
-
-    if (existsSync(constraintsPath)) {
-      try {
-        const content = readFileSync(constraintsPath, 'utf8');
-        const data = parse(content);
-        return {
-          enabled: data.enforcement?.enabled ?? true,
-          blocking_levels: data.enforcement?.blocking_levels ?? ['critical', 'error'],
-          warning_levels: data.enforcement?.warning_levels ?? ['warning'],
-          info_levels: data.enforcement?.info_levels ?? ['info'],
-          fail_open: data.enforcement?.fail_open ?? true
-        };
-      } catch (error) {
-        logger.error('Failed to parse enforcement settings from constraints.yaml', { error: error.message });
-      }
-    }
-
-    // Default enforcement settings
+    const content = readFileSync(configPath, 'utf8');
+    const data = parse(content);
     return {
-      enabled: true,
-      blocking_levels: ['critical', 'error'],
-      warning_levels: ['warning'],
-      info_levels: ['info'],
-      fail_open: true
+      enabled: data.enforcement?.enabled ?? true,
+      blocking_levels: data.enforcement?.blocking_levels ?? ['critical', 'error'],
+      warning_levels: data.enforcement?.warning_levels ?? ['warning'],
+      info_levels: data.enforcement?.info_levels ?? ['info'],
+      fail_open: data.enforcement?.fail_open ?? true
     };
   }
 
   getConstraints() {
-    // Use shared config discovery logic
     const configPath = this.findProjectConfig();
-
-    if (configPath) {
-      try {
-        const content = readFileSync(configPath, 'utf8');
-        const data = parse(content);
-        logger.info(`Loaded project constraints from ${configPath}`);
-        return data.constraints || [];
-      } catch (error) {
-        logger.error(`Failed to parse project constraints from ${configPath}`, { error: error.message });
-      }
+    if (!configPath) {
+      throw new Error(
+        'No constraint config found. Set CONSTRAINT_CONFIG_PATH or CODING_REPO ' +
+        'so the manager can locate .constraint-monitor.yaml.'
+      );
     }
 
-    // Fallback: Look for constraints.yaml relative to this module's directory
-    const __dirname = dirname(fileURLToPath(import.meta.url));
-    const constraintsPath = join(__dirname, '../../constraints.yaml');
-    
-    if (!existsSync(constraintsPath)) {
-      logger.warn(`constraints.yaml not found at ${constraintsPath}, using default constraints`);
-      return this.getDefaultConstraints();
-    }
-    
-    try {
-      const content = readFileSync(constraintsPath, 'utf8');
-      const data = parse(content);
-      logger.info(`Loaded fallback constraints from ${constraintsPath}`);
-      return data.constraints || [];
-    } catch (error) {
-      logger.error('Failed to parse constraints.yaml', { error: error.message });
-      return this.getDefaultConstraints();
-    }
+    const content = readFileSync(configPath, 'utf8');
+    const data = parse(content);
+    logger.info(`Loaded constraints from ${configPath}`);
+    return data.constraints || [];
   }
 
   getDefaultConstraints() {
@@ -298,38 +249,16 @@ export class ConfigManager {
   }
 
   getConstraintGroups() {
-    // Use shared config discovery logic
     const configPath = this.findProjectConfig();
-
-    if (configPath) {
-      try {
-        const content = readFileSync(configPath, 'utf8');
-        const data = parse(content);
-        logger.info(`Loaded project-specific constraint groups from ${configPath}`);
-        return data.constraint_groups || [];
-      } catch (error) {
-        logger.error(`Failed to parse project constraint groups from ${configPath}`, { error: error.message });
-      }
+    if (!configPath) {
+      throw new Error(
+        'No constraint config found. Set CONSTRAINT_CONFIG_PATH or CODING_REPO ' +
+        'so the manager can locate .constraint-monitor.yaml.'
+      );
     }
-
-    // Fallback: Look for constraints.yaml relative to this module's directory
-    const __dirname = dirname(fileURLToPath(import.meta.url));
-    const constraintsPath = join(__dirname, '../../constraints.yaml');
-    
-    if (!existsSync(constraintsPath)) {
-      logger.warn(`constraints.yaml not found at ${constraintsPath}, using default groups`);
-      return this.getDefaultConstraintGroups();
-    }
-    
-    try {
-      const content = readFileSync(constraintsPath, 'utf8');
-      const data = parse(content);
-      logger.info(`Loaded fallback constraint groups from ${constraintsPath}`);
-      return data.constraint_groups || [];
-    } catch (error) {
-      logger.error('Failed to parse constraint groups from constraints.yaml', { error: error.message });
-      return this.getDefaultConstraintGroups();
-    }
+    const content = readFileSync(configPath, 'utf8');
+    const data = parse(content);
+    return data.constraint_groups || [];
   }
 
   getConstraintsWithGroups() {
@@ -370,37 +299,16 @@ export class ConfigManager {
   }
 
   getConstraintSettings() {
-    // Use shared config discovery logic
     const configPath = this.findProjectConfig();
-
-    if (configPath) {
-      try {
-        const content = readFileSync(configPath, 'utf8');
-        const data = parse(content);
-        logger.info(`Loaded project-specific constraint settings from ${configPath}`);
-        return data.settings || this.getDefaultSettings();
-      } catch (error) {
-        logger.error(`Failed to parse project constraint settings from ${configPath}`, { error: error.message });
-      }
+    if (!configPath) {
+      throw new Error(
+        'No constraint config found. Set CONSTRAINT_CONFIG_PATH or CODING_REPO ' +
+        'so the manager can locate .constraint-monitor.yaml.'
+      );
     }
-
-    // Fallback: Look for constraints.yaml relative to this module's directory
-    const __dirname = dirname(fileURLToPath(import.meta.url));
-    const constraintsPath = join(__dirname, '../../constraints.yaml');
-    
-    if (!existsSync(constraintsPath)) {
-      return this.getDefaultSettings();
-    }
-    
-    try {
-      const content = readFileSync(constraintsPath, 'utf8');
-      const data = parse(content);
-      logger.info(`Loaded fallback constraint settings from ${constraintsPath}`);
-      return data.settings || this.getDefaultSettings();
-    } catch (error) {
-      logger.error('Failed to parse settings from constraints.yaml', { error: error.message });
-      return this.getDefaultSettings();
-    }
+    const content = readFileSync(configPath, 'utf8');
+    const data = parse(content);
+    return data.settings || this.getDefaultSettings();
   }
 
   getDefaultConstraintGroups() {

@@ -137,8 +137,13 @@ class RealTimeConstraintEnforcer {
 
       return result;
     } catch (error) {
-      logger.error('🔴 Constraint checking error:', error.message);
-      return { violations: [], compliance: 10 }; // Fail open
+      // Re-throw — let the caller surface the engine failure rather than
+      // silently returning "no violations". Hiding engine errors here
+      // historically masked bugs (config split-brain, missing config, etc.)
+      // and made it look like the constraint system was working when it
+      // wasn't running at all.
+      logger.error('🔴 Constraint engine error:', error.message);
+      throw error;
     }
   }
 

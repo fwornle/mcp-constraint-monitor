@@ -70,8 +70,12 @@ class DashboardServer {
         // Initialize constraint engine with the same ConfigManager
         this.constraintEngine = new ConstraintEngine(this.config);
 
-        // SELF-CONTAINED violations storage (ELIMINATING parallel version dependency)
-        this.violationsFile = join(__dirname, '../data/violations.json');
+        // Single canonical violations store: the bind-mounted .mcp-sync file
+        // that host hooks also write to. Previously this server merged from
+        // 6 different paths (most container-local), so the dashboard showed
+        // stale entries that no longer reflected the host config.
+        const codingRoot = process.env.CODING_REPO || join(__dirname, '../../../..');
+        this.violationsFile = join(codingRoot, '.mcp-sync', 'violation-history.json');
         this.violations = [];
 
         // Initialize constraint engine
@@ -482,86 +486,37 @@ class DashboardServer {
     async loadViolations() {
         try {
             // CONSOLIDATED VIOLATION LOADING - collecting all historical violations
-            const allViolations = new Map(); // Use Map to deduplicate by ID
-
-            // Define all violation storage sources (REAL DATA ONLY - no test data)
-            const sources = [
-                { name: 'main', path: this.violationsFile, description: 'main storage' },
-                { name: 'backup', path: join(__dirname, '../data/violations-backup.json'), description: 'backup storage' },
-                { name: 'scripts', path: join(__dirname, '../../../scripts/.constraint-violations.json'), description: 'scripts storage' },
-                { name: 'merged', path: '/tmp/merged-violations.json', description: 'merged historical storage' },
-                { name: 'mcp-sync', path: join(__dirname, '../../../.mcp-sync/violation-history.json'), description: 'MCP sync storage' },
-                { name: 'mcp-local', path: join(__dirname, '../data/violations-mcp-sync.json'), description: 'MCP sync local copy' }
-                // Removed historic-test source - only showing real violations now
-            ];
-
-            let totalLoaded = 0;
-            const sourceStats = {};
-
-            // Load violations from each source
-            for (const source of sources) {
-                try {
-                    if (existsSync(source.path)) {
-                        const data = readFileSync(source.path, 'utf8');
-                        const violations = JSON.parse(data);
-                        const violationArray = Array.isArray(violations) ? violations : violations.violations || [];
-
-                        let addedCount = 0;
-                        violationArray.forEach(violation => {
-                            if (violation && violation.id) {
-                                if (!allViolations.has(violation.id)) {
-                                    allViolations.set(violation.id, {
-                                        ...violation,
-                                        source: source.name // Track source for debugging
-                                    });
-                                    addedCount++;
-                                }
-                            }
-                        });
-
-                        sourceStats[source.name] = { total: violationArray.length, added: addedCount };
-                        totalLoaded += addedCount;
-                        logger.info(`Loaded ${violationArray.length} violations from ${source.description}, ${addedCount} unique`);
-                    }
-                } catch (sourceError) {
-                    logger.warn(`Could not load violations from ${source.description}:`, sourceError.message);
-                    sourceStats[source.name] = { total: 0, added: 0, error: sourceError.message };
-                }
+            // Single source of truth: the bind-mounted .mcp-sync file that
+            // host hooks write to. No multi-source merging — that masked stale
+            // data from container-local copies that diverged from the host.
+            if (!existsSync(this.violationsFile)) {
+                logger.warn(`Violations file ${this.violationsFile} does not exist yet`);
+                this.violations = [];
+                return;
             }
 
-            // Convert Map back to array
-            this.violations = Array.from(allViolations.values());
-
-            // Sort by timestamp for consistency
-            this.violations.sort((a, b) => {
+            const data = readFileSync(this.violationsFile, 'utf8');
+            const parsed = JSON.parse(data);
+            const arr = Array.isArray(parsed) ? parsed : (parsed.violations || []);
+            this.violations = arr.sort((a, b) => {
                 const timeA = new Date(a.timestamp || 0).getTime();
                 const timeB = new Date(b.timestamp || 0).getTime();
                 return timeA - timeB;
             });
 
-            logger.info(`CONSOLIDATED VIOLATIONS: Loaded ${this.violations.length} total unique violations from ${Object.keys(sourceStats).length} sources`, sourceStats);
-
-            // Save consolidated violations to main storage for persistence
-            if (this.violations.length > 0) {
-                await this.saveViolations();
-            }
-
+            logger.info(`Loaded ${this.violations.length} violations from ${this.violationsFile}`);
         } catch (error) {
-            logger.error('Failed to load consolidated violations:', error);
+            logger.error('Failed to load violations:', error);
             this.violations = [];
         }
     }
 
     async saveViolations() {
         try {
-            // Ensure data directory exists
-            const dataDir = join(__dirname, '../data');
-            if (!existsSync(dataDir)) {
-                await import('fs/promises').then(fs => fs.mkdir(dataDir, { recursive: true }));
-            }
-
-            writeFileSync(this.violationsFile, JSON.stringify(this.violations, null, 2));
-            logger.debug(`Saved ${this.violations.length} violations to self-contained storage`);
+            // Persist as { violations: [...] } to match the format the host hook
+            // writes — keeps the file round-tripable.
+            writeFileSync(this.violationsFile, JSON.stringify({ violations: this.violations }, null, 2));
+            logger.debug(`Saved ${this.violations.length} violations to ${this.violationsFile}`);
         } catch (error) {
             logger.error('Failed to save violations:', error);
         }

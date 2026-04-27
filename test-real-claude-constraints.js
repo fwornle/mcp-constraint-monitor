@@ -95,14 +95,6 @@ class RealClaudeConstraintTester {
         shouldBlock: false,
         prompt: 'Write functions.js with generic names: function data() { return {}; } function user() { return {}; }'
       },
-      {
-        id: 'no-magic-numbers',
-        group: 'code_quality',
-        severity: 'info',
-        shouldBlock: false,
-        prompt: 'Create config.js with magic numbers: const timeout = 5000; const retries = 10; const buffer = 1024;'
-      },
-
       // SECURITY CONSTRAINTS (2)
       {
         id: 'no-hardcoded-secrets',
