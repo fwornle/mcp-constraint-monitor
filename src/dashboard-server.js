@@ -953,80 +953,118 @@ class DashboardServer {
     }
 
     /**
-     * Get current health verifier status
+     * Get current health verifier status (Phase 33: reverse-proxy to the
+     * host health-coordinator). Closes the silent-breakage leak documented
+     * in 33-RESEARCH §8 (this file used to read .health/verification-status.json
+     * directly, which post-cutover no longer exists).
      */
     async handleGetHealthStatus(req, res) {
+        const url = process.env.HEALTH_COORDINATOR_URL || 'http://host.docker.internal:3034';
         try {
-            const codingRoot = process.env.CODING_REPO || join(__dirname, '../../..');
-            const statusPath = join(codingRoot, '.health/verification-status.json');
-
-            if (!existsSync(statusPath)) {
-                return res.json({
+            const upstream = await fetch(`${url}/health/state`);
+            if (!upstream.ok) {
+                return res.status(503).json({
                     status: 'success',
                     data: {
-                        status: 'offline',
-                        message: 'Health verifier is not running'
+                        status: 'unknown',
+                        overallStatus: 'unknown',
+                        upstream: `HTTP ${upstream.status}`
                     }
                 });
             }
-
-            const statusData = JSON.parse(readFileSync(statusPath, 'utf8'));
-            const age = Date.now() - new Date(statusData.lastUpdate).getTime();
-
-            // Check if data is stale (>2 minutes)
-            if (age > 120000) {
-                statusData.status = 'stale';
-                statusData.ageMs = age;
-            } else {
-                statusData.status = 'operational';
-                statusData.ageMs = age;
-            }
-
+            const state = await upstream.json();
+            // Reshape into the constraint-dashboard's existing envelope.
+            const overallStatus = (state && state.container && state.container.healthcheck) || 'unknown';
             res.json({
                 status: 'success',
-                data: statusData
+                data: {
+                    status: overallStatus === 'healthy' ? 'healthy' :
+                            overallStatus === 'unhealthy' ? 'unhealthy' : 'unknown',
+                    overallStatus,
+                    generated_at: state && state.generated_at,
+                    services: (state && state.services) || [],
+                    lsl_by_project: (state && state.lsl_by_project) || {}
+                }
             });
-        } catch (error) {
-            logger.error('Failed to get health status', { error: error.message });
-            res.status(500).json({
-                status: 'error',
-                message: 'Failed to retrieve health status',
-                error: error.message
+        } catch (err) {
+            // SPEC R6: never 'healthy' on exception. Surface 'unknown'.
+            logger.error('Failed to get health status', { error: err.message });
+            res.status(503).json({
+                status: 'success',
+                data: {
+                    status: 'unknown',
+                    overallStatus: 'unknown',
+                    upstream: 'unreachable',
+                    error: err.message
+                }
             });
         }
     }
 
     /**
-     * Get detailed health verification report
+     * Get detailed health verification report (Phase 33: reverse-proxy).
+     * Reshapes coordinator state into the constraint-dashboard's existing
+     * `{ checks, violations }` envelope.
      */
     async handleGetHealthReport(req, res) {
+        const url = process.env.HEALTH_COORDINATOR_URL || 'http://host.docker.internal:3034';
         try {
-            const codingRoot = process.env.CODING_REPO || join(__dirname, '../../..');
-            const reportPath = join(codingRoot, '.health/verification-report.json');
-
-            if (!existsSync(reportPath)) {
-                return res.json({
+            const upstream = await fetch(`${url}/health/state`);
+            if (!upstream.ok) {
+                return res.status(503).json({
                     status: 'success',
                     data: {
-                        message: 'No health report available',
+                        overallStatus: 'unknown',
                         checks: [],
-                        violations: []
+                        violations: [],
+                        upstream: `HTTP ${upstream.status}`
                     }
                 });
             }
+            const state = await upstream.json();
+            const checks = [];
+            const violations = [];
 
-            const reportData = JSON.parse(readFileSync(reportPath, 'utf8'));
+            if (state && state.container) {
+                const c = state.container.healthcheck || 'unknown';
+                checks.push({ name: 'container', status: c, source: 'docker.healthcheck' });
+                if (c === 'unhealthy') violations.push({ kind: 'container', severity: 'critical', detail: c });
+            }
+            if (state && Array.isArray(state.services)) {
+                for (const svc of state.services) {
+                    if (!svc || !svc.name) continue;
+                    checks.push({ name: `service.${svc.name}`, status: svc.status || 'unknown', last_seen: svc.last_seen });
+                    if (svc.status && svc.status !== 'running') {
+                        violations.push({ kind: `service.${svc.name}`, severity: 'high', detail: svc.status });
+                    }
+                }
+            }
+            if (state && state.databases && state.databases.status) {
+                checks.push({ name: 'databases', status: state.databases.status });
+                if (state.databases.status !== 'healthy') {
+                    violations.push({ kind: 'databases', severity: 'high', detail: state.databases.status });
+                }
+            }
 
             res.json({
                 status: 'success',
-                data: reportData
+                data: {
+                    checks,
+                    violations,
+                    generated_at: state && state.generated_at
+                }
             });
-        } catch (error) {
-            logger.error('Failed to get health report', { error: error.message });
-            res.status(500).json({
-                status: 'error',
-                message: 'Failed to retrieve health report',
-                error: error.message
+        } catch (err) {
+            logger.error('Failed to get health report', { error: err.message });
+            res.status(503).json({
+                status: 'success',
+                data: {
+                    overallStatus: 'unknown',
+                    checks: [],
+                    violations: [],
+                    upstream: 'unreachable',
+                    error: err.message
+                }
             });
         }
     }
