@@ -38,7 +38,6 @@ export class StatusGenerator {
     return {
       compliance: 8.5,
       violations: 0,
-      trajectory: 'exploring',
       risk: 'low',
       interventions: 0,
       healthy: true,
@@ -51,7 +50,6 @@ export class StatusGenerator {
     return {
       compliance: 0,
       violations: 0,
-      trajectory: 'error',
       risk: 'high',
       healthy: false,
       error: error.message,
@@ -62,49 +60,19 @@ export class StatusGenerator {
   // Generate status line text for Claude Code integration
   generateStatusLine(status) {
     const parts = [];
-    
+
     // Compliance score with shield (show as percentage)
     if (status.compliance !== undefined) {
       // Convert to percentage if value is between 0-10 (legacy format)
       const compliancePercent = status.compliance <= 10 ? status.compliance * 10 : status.compliance;
       parts.push(`🔒 ${compliancePercent.toFixed(0)}%`);
     }
-    
-    // Trajectory status removed for conciseness - shield symbol is sufficient
-    
+
     // Active violations
     if (status.violations > 0) {
       parts.push(`⚠️${status.violations}`);
     }
-    
+
     return parts.join(' ');
-  }
-
-  getTrajectoryIcon(trajectory) {
-    const icons = {
-      'on_track': '📈',
-      'exploring': '🔍',
-      'off_track': '📉',
-      'blocked': '🚫',
-      'implementing': '⚙️',
-      'verifying': '✅',
-      'error': '❌'
-    };
-    
-    return icons[trajectory] || '❓';
-  }
-
-  getTrajectoryText(trajectory) {
-    const shortText = {
-      'on_track': 'ON',
-      'exploring': 'EX',
-      'off_track': 'OFF',
-      'blocked': 'BLK',
-      'implementing': 'IMP',
-      'verifying': 'VER',
-      'error': 'ERR'
-    };
-    
-    return shortText[trajectory] || 'UNK';
   }
 }

@@ -203,7 +203,6 @@ class ConstraintMonitorServer {
           status: 'operational',
           compliance_score: status.compliance || 8.5,
           active_violations: status.violations || 0,
-          trajectory: status.trajectory || 'exploring',
           risk_level: status.risk || 'low',
           last_updated: new Date().toISOString(),
           session_id: args.sessionId || 'default'

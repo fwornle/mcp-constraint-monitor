@@ -51,7 +51,6 @@ export class DuckDBAnalytics {
         event_type VARCHAR,
         constraint_id VARCHAR,
         violation_severity INTEGER,
-        trajectory_score REAL,
         timestamp TIMESTAMP,
         resolution_pattern VARCHAR,
         content_length INTEGER,
@@ -69,7 +68,6 @@ export class DuckDBAnalytics {
         constraint_type VARCHAR,
         frequency INTEGER DEFAULT 1,
         success_rate REAL DEFAULT 0.0,
-        avg_trajectory_score REAL,
         resolution_strategies TEXT[], -- Array of strategies
         last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -103,7 +101,6 @@ export class DuckDBAnalytics {
       'CREATE INDEX IF NOT EXISTS idx_constraint_type ON constraint_events(constraint_id, event_type)',
       'CREATE INDEX IF NOT EXISTS idx_violation_severity ON constraint_events(violation_severity, timestamp)',
       'CREATE INDEX IF NOT EXISTS idx_agent_events ON constraint_events(agent, event_type, timestamp)',
-      'CREATE INDEX IF NOT EXISTS idx_trajectory_score ON constraint_events(trajectory_score, timestamp)',
       'CREATE INDEX IF NOT EXISTS idx_resolution_patterns ON constraint_events(resolution_pattern, timestamp)',
       'CREATE INDEX IF NOT EXISTS idx_session_compliance ON session_metrics(compliance_score, end_time)'
     ];
@@ -122,13 +119,12 @@ export class DuckDBAnalytics {
       const query = `
         INSERT INTO constraint_events (
           uuid, session_id, agent, event_type, constraint_id,
-          violation_severity, trajectory_score, timestamp,
+          violation_severity, timestamp,
           resolution_pattern, content_length, constraint_context,
           user_intent, intervention_applied
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (uuid) DO UPDATE SET
           violation_severity = excluded.violation_severity,
-          trajectory_score = excluded.trajectory_score,
           resolution_pattern = excluded.resolution_pattern,
           intervention_applied = excluded.intervention_applied
       `;
@@ -140,7 +136,6 @@ export class DuckDBAnalytics {
         eventData.eventType,
         eventData.constraintId,
         eventData.violationSeverity || 0,
-        eventData.trajectoryScore || 10.0,
         new Date(eventData.timestamp),
         eventData.resolutionPattern,
         eventData.content?.length || 0,
@@ -169,22 +164,21 @@ export class DuckDBAnalytics {
 
     try {
       const query = `
-        SELECT 
+        SELECT
           constraint_id,
           resolution_pattern,
           COUNT(*) as frequency,
-          AVG(trajectory_score) as avg_success,
           AVG(CASE WHEN intervention_successful THEN 1.0 ELSE 0.0 END) as intervention_success_rate,
           MAX(timestamp) as last_occurrence,
           STRING_AGG(DISTINCT user_intent, ' | ') as common_intents
-        FROM constraint_events 
+        FROM constraint_events
         WHERE constraint_id = ANY($1)
           AND violation_severity > 0
           AND timestamp > NOW() - INTERVAL '${timeWindow}'
           AND resolution_pattern IS NOT NULL
         GROUP BY constraint_id, resolution_pattern
         HAVING COUNT(*) >= $2
-        ORDER BY frequency DESC, avg_success DESC
+        ORDER BY frequency DESC, intervention_success_rate DESC
         LIMIT $3
       `;
 
@@ -203,11 +197,10 @@ export class DuckDBAnalytics {
 
     try {
       const query = `
-        SELECT 
+        SELECT
           COUNT(*) as total_events,
           COUNT(CASE WHEN violation_severity > 0 THEN 1 END) as violations,
           COUNT(CASE WHEN intervention_applied THEN 1 END) as interventions,
-          AVG(trajectory_score) as avg_trajectory_score,
           MIN(timestamp) as session_start,
           MAX(timestamp) as session_end,
           STRING_AGG(DISTINCT constraint_id, ', ') as active_constraints
@@ -230,13 +223,12 @@ export class DuckDBAnalytics {
 
     try {
       const query = `
-        SELECT 
+        SELECT
           agent,
           COUNT(*) as total_events,
           COUNT(CASE WHEN violation_severity > 0 THEN 1 END) as violations,
-          ROUND(AVG(trajectory_score), 2) as avg_trajectory_score,
           ROUND(
-            (COUNT(*) - COUNT(CASE WHEN violation_severity > 0 THEN 1 END)) * 100.0 / COUNT(*), 
+            (COUNT(*) - COUNT(CASE WHEN violation_severity > 0 THEN 1 END)) * 100.0 / COUNT(*),
             2
           ) as compliance_percentage,
           COUNT(DISTINCT session_id) as active_sessions

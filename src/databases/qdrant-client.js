@@ -79,7 +79,6 @@ export class QdrantDatabase {
           eventType: eventData.eventType,
           constraintId: eventData.constraintId,
           violationSeverity: eventData.violationSeverity,
-          trajectoryScore: eventData.trajectoryScore,
           timestamp: eventData.timestamp,
           sessionId: eventData.sessionId,
           content: eventData.content,

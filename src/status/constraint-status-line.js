@@ -44,7 +44,6 @@ class ConstraintStatusLine {
       enabled: true,
       showCompliance: true,
       showViolations: true,
-      showTrajectory: true,
       maxLength: 50,
       updateInterval: 1000,
       serviceEndpoint: this.getServiceEndpoint(),
@@ -56,8 +55,7 @@ class ConstraintStatusLine {
       },
       icons: {
         shield: '🔒',
-        warning: '⚠️', 
-        trajectory: '📈',
+        warning: '⚠️',
         blocked: '🚫'
       }
     };
@@ -118,7 +116,6 @@ class ConstraintStatusLine {
     const statusData = {
       compliance: 85, // Changed from 8.5 to 85% (percentage scale)
       violations: 0,
-      trajectory: 'on_track',
       risk: 'low',
       interventions: 0,
       healthy: true
@@ -181,7 +178,6 @@ class ConstraintStatusLine {
     const data = {
       compliance: 85, // Changed from 8.5 to 85% (percentage scale)
       violations: 0,
-      trajectory: 'exploring',
       risk: 'low'
     };
 
@@ -198,7 +194,6 @@ class ConstraintStatusLine {
       if (existsSync(metricsPath)) {
         const metrics = JSON.parse(readFileSync(metricsPath, 'utf8'));
         data.compliance = metrics.complianceScore || 85; // Changed from 8.5 to 85%
-        data.trajectory = metrics.trajectory || 'exploring';
         data.risk = metrics.riskLevel || 'low';
       }
     } catch (error) {
@@ -233,8 +228,6 @@ class ConstraintStatusLine {
       parts.push(`${violationIcon} ${data.violations}`);
     }
 
-    // Trajectory status removed for conciseness - shield symbol is sufficient
-
     const text = parts.join(' ');
     const color = this.getStatusColor(data);
     const tooltip = this.buildTooltip(data);
@@ -245,32 +238,6 @@ class ConstraintStatusLine {
       tooltip,
       onClick: this.getClickAction()
     };
-  }
-
-  getTrajectoryIcon(trajectory) {
-    const icons = {
-      'on_track': '📈',
-      'exploring': '🔍', 
-      'off_track': '📉',
-      'blocked': '🚫',
-      'implementing': '⚙️',
-      'verifying': '✅'
-    };
-    
-    return icons[trajectory] || '❓';
-  }
-
-  getTrajectoryText(trajectory) {
-    const shortText = {
-      'on_track': 'ON',
-      'exploring': 'EX',
-      'off_track': 'OFF',
-      'blocked': 'BLK',
-      'implementing': 'IMP',
-      'verifying': 'VER'
-    };
-    
-    return shortText[trajectory] || 'UNK';
   }
 
   getStatusColor(data) {
@@ -330,7 +297,6 @@ class ConstraintStatusLine {
       return {
         compliance: 85, // Default 85% (not 8.5 on 0-10 scale)
         violations: 0,
-        trajectory: 'exploring',
         risk: 'low'
       };
     }
@@ -383,7 +349,6 @@ class ConstraintStatusLine {
     return {
       compliance: Math.max(0, Math.min(100, complianceRate)), // Percentage scale (0-100%)
       violations: recent1hViolations.length, // Show only recent hour violations
-      trajectory: recent1hViolations.length > 3 ? 'off_track' : recent6hViolations.length === 0 ? 'on_track' : 'exploring',
       risk: recent1hViolations.length > 5 ? 'high' : recent1hViolations.length > 2 ? 'medium' : 'low'
     };
   }
@@ -419,13 +384,6 @@ class ConstraintStatusLine {
       lines.push(`⚠️  Active Issues: ${data.violations} violation${data.violations > 1 ? 's' : ''}`);
     } else {
       lines.push('✅ Status: No active violations');
-    }
-    
-    // Activity section
-    if (data.trajectory) {
-      const trajectoryIcon = this.getTrajectoryIcon(data.trajectory);
-      const trajectoryText = data.trajectory.replace('_', ' ');
-      lines.push(`${trajectoryIcon} Activity: ${this.capitalizeFirst(trajectoryText)}`);
     }
     
     // Risk assessment

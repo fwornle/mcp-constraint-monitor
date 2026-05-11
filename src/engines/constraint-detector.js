@@ -115,15 +115,6 @@ export class ConstraintDetector {
         description: 'Enforce structured logging over console.log'
       },
       {
-        id: 'trajectory-alignment',
-        type: 'semantic',
-        severity: 'warning',
-        threshold: 5,
-        message: 'Action misaligned with user intent',
-        correctionAction: 'suggest',
-        description: 'Ensure actions align with user goals'
-      },
-      {
         id: 'excessive-exploration',
         type: 'workflow',
         severity: 'warning',

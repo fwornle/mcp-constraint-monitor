@@ -197,7 +197,6 @@ class DashboardServer {
                 data: {
                     compliance_score: status.compliance || 8.5,
                     active_violations: status.violations || 0,
-                    trajectory: status.trajectory || 'exploring',
                     risk_level: status.risk || 'low',
                     interventions: status.interventions || 0,
                     healthy: status.healthy !== false,

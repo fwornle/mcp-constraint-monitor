@@ -30,7 +30,7 @@ export class GrokSemanticEngine {
   }
 
   /**
-   * Analyze a coding interaction for constraint violations and trajectory alignment
+   * Analyze a coding interaction for constraint violations
    * Target: <50ms analysis time
    */
   async analyzeInteraction(event, context) {
@@ -125,7 +125,6 @@ EVALUATE (JSON format):
 {
   "intentAlignment": [1-10 score],
   "constraintViolations": ["violation_type", ...],
-  "trajectoryStatus": "on_track|exploring|off_track|blocked",
   "nextPhase": "exploration|planning|implementation|verification",
   "riskScore": [0.0-1.0],
   "reasoning": "brief explanation"
@@ -154,7 +153,6 @@ Response (JSON only):`;
       return {
         intentAlignment: Math.max(1, Math.min(10, analysis.intentAlignment || 5)),
         constraintViolations: Array.isArray(analysis.constraintViolations) ? analysis.constraintViolations : [],
-        trajectoryStatus: analysis.trajectoryStatus || 'exploring',
         nextPhase: analysis.nextPhase || 'exploration',
         riskScore: Math.max(0, Math.min(1, analysis.riskScore || 0.1)),
         reasoning: analysis.reasoning || 'Analysis completed',
@@ -162,13 +160,12 @@ Response (JSON only):`;
       };
     } catch (error) {
       logger.warn('Failed to parse Groq analysis response:', { error: error.message, response });
-      
+
       // Fallback analysis
       return {
         intentAlignment: 5,
         constraintViolations: [],
-        trajectoryStatus: 'exploring',
-        nextPhase: 'exploration', 
+        nextPhase: 'exploration',
         riskScore: 0.1,
         reasoning: 'Parsing failed, using default analysis',
         rawResponse: response
@@ -319,7 +316,6 @@ Respond with JSON array of violations (empty if none):
     return {
       intentAlignment: 5,
       constraintViolations: [],
-      trajectoryStatus: 'exploring',
       nextPhase: 'exploration',
       riskScore: 0.1,
       reasoning: 'Default analysis due to service failure'
