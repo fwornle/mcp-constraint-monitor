@@ -107,6 +107,9 @@ constraints:
     message: "CRITICAL: No parallel versions allowed - edit the original file directly"
     severity: critical
     enabled: true
+    # Code files only — planning docs / markdown / yaml frequently contain
+    # benign substrings like "cold-store" or "new feature".
+    file_pattern: \.(js|ts|jsx|tsx|mjs|cjs|py|sh|rb|go|rs|java|kt|swift|c|cc|cpp|h|hpp|m|mm|php|pl|lua|dart|scala)$
     suggestion: Debug and fix the original file instead of creating parallel versions
   - id: debug-not-speculate
     group: architecture
