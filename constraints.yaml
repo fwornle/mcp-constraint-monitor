@@ -137,10 +137,11 @@ constraints:
     suggestion: Add '!include _standard-style.puml' after @startuml and before content
   - id: plantuml-file-location
     group: plantuml
-    pattern: "!include.*\\.puml"
+    pattern: "!include\\s+(?!_standard-style\\.puml|docs/puml/)\\S+\\.puml"
     message: PlantUML files should be stored in docs/puml/ directory
     severity: warning
     enabled: true
+    file_pattern: \.(puml|plantuml)$
     suggestion: Move .puml files to docs/puml/ and update !include paths
   - id: plantuml-diagram-workflow
     group: plantuml
@@ -148,6 +149,7 @@ constraints:
     message: "Diagrams should follow PlantUML workflow: .puml files in docs/puml/, PNG files in docs/images/"
     severity: info
     enabled: true
+    file_pattern: \.(md|markdown|rst|txt)$
     suggestion: 1. Create .puml file in docs/puml/ with !include _standard-style.puml 2. Generate PNG with plantuml -tpng 3.
       Store PNG in docs/images/ 4. Reference PNG in markdown
   - id: plantuml-readability-guidelines
@@ -160,6 +162,7 @@ constraints:
   - id: plantuml-file-organization
     group: plantuml
     pattern: \.puml$
+    applies_to: file_path
     message: "PlantUML files should follow naming convention: component-purpose.puml"
     severity: info
     enabled: true
