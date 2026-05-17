@@ -829,99 +829,103 @@ class DashboardServer {
         };
 
         try {
-            const lslRegistryPath = join(__dirname, '../../../.global-lsl-registry.json');
-
-            if (existsSync(lslRegistryPath)) {
-                const registryData = JSON.parse(readFileSync(lslRegistryPath, 'utf8'));
-
-                if (registryData.coordinator) {
-                    const uptime = Date.now() - (registryData.coordinator.startTime || 0);
-
-                    // Two liveness signals:
-                    //   1. PID probe — works on host, fails in containers
-                    //      because Docker's PID namespace is isolated
-                    //      from the host where the coordinator runs.
-                    //   2. Heartbeat freshness — the coordinator stamps
-                    //      `lastHealthCheck` on every tick. The
-                    //      registry file is bind-mounted into the
-                    //      container so mtime+timestamp work across
-                    //      namespaces.
-                    // Status is `operational` when EITHER signal says
-                    // alive. This avoids false-degraded reports when
-                    // running in Docker.
-                    const pidAlive = this.checkProcessAlive(registryData.coordinator.pid);
-                    const interval = registryData.coordinator.healthCheckInterval || 30000;
-                    const lastBeat = registryData.coordinator.lastHealthCheck || 0;
-                    const beatAge = Date.now() - lastBeat;
-                    const heartbeatFresh = lastBeat > 0 && beatAge < interval * 3;
-
-                    let status;
-                    if (pidAlive || heartbeatFresh) status = 'operational';
-                    else if (lastBeat > 0) status = 'degraded'; // stale heartbeat — coordinator stopped beating
-                    else status = 'unknown'; // no heartbeat ever recorded — pre-fix coordinator
-
+            // Coordinator liveness: probe the canonical health-coordinator's
+            // HTTP endpoint instead of reading .global-lsl-registry.json.
+            // The registry was owned by the now-retired global-service-coordinator
+            // (removed in Phase 33-14 cleanup) and is no longer being written —
+            // any data inside is fossilized. host.docker.internal:3034 is set
+            // by the docker-compose env so this works from inside the container.
+            const coordinatorUrl = process.env.HEALTH_COORDINATOR_URL || 'http://host.docker.internal:3034';
+            try {
+                const probeStart = Date.now();
+                const upstream = await fetch(`${coordinatorUrl}/health/state`, {
+                    signal: AbortSignal.timeout(2000)
+                });
+                if (upstream.ok) {
+                    const state = await upstream.json();
+                    const generatedAt = state && state.generated_at ? Date.parse(state.generated_at) : 0;
+                    const beatAge = generatedAt > 0 ? Date.now() - generatedAt : null;
+                    // /health/state is regenerated every 5s tick on the host;
+                    // 30s window is generous enough for clock skew + transient
+                    // load. Anything older means the coordinator stopped
+                    // ticking — flag as degraded.
+                    const heartbeatFresh = beatAge !== null && beatAge < 30000;
                     health.coordinator = {
-                        status,
-                        pid: registryData.coordinator.pid,
-                        uptime: Math.floor(uptime / 1000),
-                        startTime: registryData.coordinator.startTime,
-                        healthCheckInterval: interval,
-                        lastHealthCheck: lastBeat || null,
-                        heartbeatAgeSeconds: lastBeat > 0 ? Math.floor(beatAge / 1000) : null,
-                        livenessSignal: pidAlive ? 'pid' : (heartbeatFresh ? 'heartbeat' : 'none'),
+                        status: heartbeatFresh ? 'operational' : (beatAge !== null ? 'degraded' : 'unknown'),
+                        uptime: state && state.coordinator_uptime_s,
+                        generated_at: state && state.generated_at,
+                        heartbeatAgeSeconds: beatAge !== null ? Math.floor(beatAge / 1000) : null,
+                        livenessSignal: heartbeatFresh ? 'http_endpoint' : 'none',
+                        probeLatencyMs: Date.now() - probeStart,
+                    };
+                } else {
+                    health.coordinator = {
+                        status: 'degraded',
+                        upstream: `HTTP ${upstream.status}`,
+                        livenessSignal: 'none',
                     };
                 }
-
-                // Only include projects with active Claude sessions (exchanges > 0)
-                // Monitors can run without active sessions, so we filter those out
-                health.projects = Object.entries(registryData.projects || {})
-                    .filter(([name, info]) => (info.exchanges || 0) > 0)
-                    .map(([name, info]) => {
-                        const timeSinceHealthCheck = Date.now() - (info.lastHealthCheck || 0);
-                        const isActive = info.status === 'active' && timeSinceHealthCheck < 60000;
-                        const pidAlive = this.checkProcessAlive(info.monitorPid);
-                        // Same dual-signal logic as the coordinator —
-                        // heartbeat freshness lets the dashboard report
-                        // accurate per-project status from inside a
-                        // container without seeing the host's PIDs.
-                        const monitorAlive = pidAlive || isActive;
-
-                        return {
-                            name,
-                            status: isActive && monitorAlive ? 'active' : 'degraded',
-                            path: info.projectPath,
-                            monitorPid: info.monitorPid,
-                            monitorAlive,
-                            livenessSignal: pidAlive ? 'pid' : (isActive ? 'heartbeat' : 'none'),
-                            exchanges: info.exchanges || 0,
-                            lastHealthCheck: info.lastHealthCheck,
-                            timeSinceHealthCheck: Math.floor(timeSinceHealthCheck / 1000)
-                        };
-                    });
-
-                const hasUnhealthyCoordinator = health.coordinator.status !== 'operational';
-                const hasUnhealthyProjects = health.projects.some(p => p.status !== 'active');
-
-                if (hasUnhealthyCoordinator) {
-                    health.overall_status = 'critical';
-                } else if (hasUnhealthyProjects) {
-                    health.overall_status = 'degraded';
-                } else {
-                    health.overall_status = 'healthy';
-                }
-
-                logger.debug('System health status calculated', {
-                    overall: health.overall_status,
-                    coordinatorStatus: health.coordinator.status,
-                    projectStatuses: health.projects.map(p => ({ name: p.name, status: p.status })),
-                    hasUnhealthyCoordinator,
-                    hasUnhealthyProjects
-                });
-            } else {
-                logger.warn('LSL registry not found, system health limited');
-                health.overall_status = 'degraded';
-                health.coordinator.status = 'unknown';
+            } catch (err) {
+                health.coordinator = {
+                    status: 'unknown',
+                    error: err && err.message,
+                    livenessSignal: 'none',
+                };
             }
+
+            // Projects list (transcript monitors): still sourced from the LSL
+            // registry but with an age filter so fossilized entries don't drag
+            // overall_status to `degraded`. Entries older than 5min are
+            // excluded — actively-monitoring projects beat at 10-30s.
+            const lslRegistryPath = join(__dirname, '../../../.global-lsl-registry.json');
+            if (existsSync(lslRegistryPath)) {
+                try {
+                    const registryData = JSON.parse(readFileSync(lslRegistryPath, 'utf8'));
+                    const PROJECT_FRESHNESS_MS = 5 * 60_000;
+                    health.projects = Object.entries(registryData.projects || {})
+                        .filter(([_, info]) => (info.exchanges || 0) > 0)
+                        .filter(([_, info]) => (Date.now() - (info.lastHealthCheck || 0)) < PROJECT_FRESHNESS_MS)
+                        .map(([name, info]) => {
+                            const timeSinceHealthCheck = Date.now() - (info.lastHealthCheck || 0);
+                            const isActive = info.status === 'active' && timeSinceHealthCheck < 60_000;
+                            const pidAlive = this.checkProcessAlive(info.monitorPid);
+                            const monitorAlive = pidAlive || isActive;
+                            return {
+                                name,
+                                status: isActive && monitorAlive ? 'active' : 'degraded',
+                                path: info.projectPath,
+                                monitorPid: info.monitorPid,
+                                monitorAlive,
+                                livenessSignal: pidAlive ? 'pid' : (isActive ? 'heartbeat' : 'none'),
+                                exchanges: info.exchanges || 0,
+                                lastHealthCheck: info.lastHealthCheck,
+                                timeSinceHealthCheck: Math.floor(timeSinceHealthCheck / 1000)
+                            };
+                        });
+                } catch (err) {
+                    logger.warn('LSL registry unreadable, projects list empty', { error: err.message });
+                }
+            }
+
+            const hasUnhealthyCoordinator = health.coordinator.status !== 'operational';
+            const hasUnhealthyProjects = health.projects.some(p => p.status !== 'active');
+
+            if (hasUnhealthyCoordinator) {
+                health.overall_status = 'critical';
+            } else if (hasUnhealthyProjects) {
+                health.overall_status = 'degraded';
+            } else {
+                health.overall_status = 'healthy';
+            }
+
+            logger.debug('System health status calculated', {
+                overall: health.overall_status,
+                coordinatorStatus: health.coordinator.status,
+                coordinatorSignal: health.coordinator.livenessSignal,
+                projectCount: health.projects.length,
+                hasUnhealthyCoordinator,
+                hasUnhealthyProjects
+            });
 
             const watchdogLogPath = join(__dirname, '../../../.logs/system-watchdog.log');
             if (existsSync(watchdogLogPath)) {
