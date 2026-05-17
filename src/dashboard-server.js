@@ -146,41 +146,78 @@ class DashboardServer {
         this.app.use(this.handleError.bind(this));
     }
 
-    getCurrentProjectPath(req) {
+    /**
+     * Fetch the canonical health-coordinator's /health/state. Single source
+     * of truth for project + session status across the dashboard. Returns
+     * null on probe failure — callers fall back to process.cwd().
+     */
+    async _fetchCoordinatorState() {
+        const coordinatorUrl = process.env.HEALTH_COORDINATOR_URL || 'http://host.docker.internal:3034';
+        try {
+            const upstream = await fetch(`${coordinatorUrl}/health/state`, {
+                signal: AbortSignal.timeout(2000)
+            });
+            if (!upstream.ok) return null;
+            return await upstream.json();
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Build the (projectName → {path, freshestBeat, sessions}) map from
+     * the coordinator's state.lsl entries. Used by both
+     * getCurrentProjectPath and handleGetProjects so the project shape is
+     * consistent everywhere.
+     */
+    _projectsFromState(state) {
+        const byProject = new Map();
+        const lslEntries = (state && state.lsl && typeof state.lsl === 'object') ? state.lsl : {};
+        for (const entry of Object.values(lslEntries)) {
+            const name = entry && entry.projectName;
+            if (!name) continue;
+            const existing = byProject.get(name) || { path: entry.projectPath, freshestBeat: 0, sessions: 0 };
+            existing.freshestBeat = Math.max(existing.freshestBeat, entry.lastBeat || 0);
+            existing.sessions += 1;
+            if (!existing.path && entry.projectPath) existing.path = entry.projectPath;
+            byProject.set(name, existing);
+        }
+        return byProject;
+    }
+
+    async getCurrentProjectPath(req) {
         try {
             // First try to get project from query parameter or request header
             const requestedProject = req.query.project || req.headers['x-project-name'];
 
-            const lslRegistryPath = join(__dirname, '../../../.global-lsl-registry.json');
-
-            try {
-                const registryData = JSON.parse(readFileSync(lslRegistryPath, 'utf8'));
-
-                // If specific project requested, use that
-                if (requestedProject && registryData.projects[requestedProject]) {
-                    const projectPath = registryData.projects[requestedProject].projectPath;
-                    logger.info(`Using requested project: ${requestedProject}`, { path: projectPath });
-                    return projectPath;
-                }
-
-                // Fallback: find active project with most recent activity
-                const activeProjects = Object.entries(registryData.projects || {})
-                    .filter(([name, info]) => info.status === 'active')
-                    .sort(([,a], [,b]) => (b.lastHealthCheck || 0) - (a.lastHealthCheck || 0));
-
-                if (activeProjects.length > 0) {
-                    const [projectName, projectInfo] = activeProjects[0];
-                    logger.info(`Using most recently active project: ${projectName}`, { path: projectInfo.projectPath });
-                    return projectInfo.projectPath;
-                }
-
-                logger.warn('No active projects found in LSL registry, using current working directory');
-                return process.cwd();
-
-            } catch (registryError) {
-                logger.warn('Could not read LSL registry, using current working directory', { error: registryError.message });
+            const state = await this._fetchCoordinatorState();
+            if (!state) {
+                logger.warn('Could not reach health-coordinator, using current working directory');
                 return process.cwd();
             }
+
+            const projects = this._projectsFromState(state);
+
+            // If specific project requested, use that
+            if (requestedProject && projects.has(requestedProject)) {
+                const projectPath = projects.get(requestedProject).path;
+                logger.info(`Using requested project: ${requestedProject}`, { path: projectPath });
+                return projectPath;
+            }
+
+            // Fallback: find project with most recent session activity
+            const ranked = [...projects.entries()]
+                .filter(([, info]) => info.freshestBeat > 0)
+                .sort(([, a], [, b]) => b.freshestBeat - a.freshestBeat);
+
+            if (ranked.length > 0) {
+                const [projectName, projectInfo] = ranked[0];
+                logger.info(`Using most recently active project: ${projectName}`, { path: projectInfo.path });
+                return projectInfo.path;
+            }
+
+            logger.warn('No active projects found in coordinator state, using current working directory');
+            return process.cwd();
 
         } catch (error) {
             logger.error('Failed to determine current project path', { error: error.message });
@@ -216,7 +253,7 @@ class DashboardServer {
     async handleGetConstraints(req, res) {
         try {
             // Get current project path for per-project constraints
-            const projectPath = this.getCurrentProjectPath(req);
+            const projectPath = await this.getCurrentProjectPath(req);
 
             // Check if grouped data is requested
             const includeGroups = req.query.grouped === 'true';
@@ -381,7 +418,7 @@ class DashboardServer {
             }
 
             // Get project path from request or detect current project
-            const projectPath = this.getCurrentProjectPath(req);
+            const projectPath = await this.getCurrentProjectPath(req);
             
             // Use project/context from request body or first violation, fallback to 'file-watcher'
             const project = req.body.project || violations[0]?.context || 'file-watcher';
@@ -658,22 +695,22 @@ class DashboardServer {
 
     async handleGetProjects(req, res) {
         try {
-            // Get projects from LSL registry if available
-            const lslRegistryPath = join(__dirname, '../../../.global-lsl-registry.json');
+            // Get projects from the canonical health-coordinator's
+            // /health/state. lsl_by_project gives the per-project rollup;
+            // lsl entries give the path + freshest session beat.
             let projects = [];
-
-            try {
-                if (existsSync(lslRegistryPath)) {
-                    const registryData = JSON.parse(readFileSync(lslRegistryPath, 'utf8'));
-                    projects = Object.entries(registryData.projects || {}).map(([name, info]) => ({
+            const state = await this._fetchCoordinatorState();
+            if (state && typeof state.lsl_by_project === 'object') {
+                const byProject = this._projectsFromState(state);
+                projects = Object.entries(state.lsl_by_project).map(([name, rollup]) => {
+                    const info = byProject.get(name) || { path: null, freshestBeat: 0 };
+                    return {
                         name,
-                        path: info.projectPath,
-                        status: info.status,
-                        lastActivity: info.lastHealthCheck
-                    }));
-                }
-            } catch (registryError) {
-                logger.warn('Could not read LSL registry:', registryError.message);
+                        path: info.path,
+                        status: rollup === 'healthy' ? 'active' : 'degraded',
+                        lastActivity: info.freshestBeat || null,
+                    };
+                });
             }
 
             // Add current project as fallback
@@ -734,7 +771,7 @@ class DashboardServer {
             const { enabled } = req.body;
 
             // Get the project path (from query param or active project)
-            const projectPath = this.getCurrentProjectPath(req);
+            const projectPath = await this.getCurrentProjectPath(req);
 
             logger.info(`Toggle constraint ${id} to ${enabled ? 'enabled' : 'disabled'} for project ${projectPath}`);
 
@@ -828,104 +865,107 @@ class DashboardServer {
             }
         };
 
+        // Single source of truth: the canonical health-coordinator's
+        // /health/state HTTP endpoint. We derive BOTH coordinator liveness
+        // and the per-project transcript-monitor status from one response.
+        //
+        // host.docker.internal:3034 is injected by docker-compose so this
+        // works from inside the container.
+        //
+        // The legacy .global-lsl-registry.json reader is gone — it was
+        // fossilized after Phase 33-14 retired global-service-coordinator.
+        const coordinatorUrl = process.env.HEALTH_COORDINATOR_URL || 'http://host.docker.internal:3034';
+        let state = null;
         try {
-            // Coordinator liveness: probe the canonical health-coordinator's
-            // HTTP endpoint instead of reading .global-lsl-registry.json.
-            // The registry was owned by the now-retired global-service-coordinator
-            // (removed in Phase 33-14 cleanup) and is no longer being written —
-            // any data inside is fossilized. host.docker.internal:3034 is set
-            // by the docker-compose env so this works from inside the container.
-            const coordinatorUrl = process.env.HEALTH_COORDINATOR_URL || 'http://host.docker.internal:3034';
-            try {
-                const probeStart = Date.now();
-                const upstream = await fetch(`${coordinatorUrl}/health/state`, {
-                    signal: AbortSignal.timeout(2000)
-                });
-                if (upstream.ok) {
-                    const state = await upstream.json();
-                    const generatedAt = state && state.generated_at ? Date.parse(state.generated_at) : 0;
-                    const beatAge = generatedAt > 0 ? Date.now() - generatedAt : null;
-                    // /health/state is regenerated every 5s tick on the host;
-                    // 30s window is generous enough for clock skew + transient
-                    // load. Anything older means the coordinator stopped
-                    // ticking — flag as degraded.
-                    const heartbeatFresh = beatAge !== null && beatAge < 30000;
-                    health.coordinator = {
-                        status: heartbeatFresh ? 'operational' : (beatAge !== null ? 'degraded' : 'unknown'),
-                        uptime: state && state.coordinator_uptime_s,
-                        generated_at: state && state.generated_at,
-                        heartbeatAgeSeconds: beatAge !== null ? Math.floor(beatAge / 1000) : null,
-                        livenessSignal: heartbeatFresh ? 'http_endpoint' : 'none',
-                        probeLatencyMs: Date.now() - probeStart,
-                    };
-                } else {
-                    health.coordinator = {
-                        status: 'degraded',
-                        upstream: `HTTP ${upstream.status}`,
-                        livenessSignal: 'none',
-                    };
-                }
-            } catch (err) {
+            const probeStart = Date.now();
+            const upstream = await fetch(`${coordinatorUrl}/health/state`, {
+                signal: AbortSignal.timeout(2000)
+            });
+            if (upstream.ok) {
+                state = await upstream.json();
+                const generatedAt = state.generated_at ? Date.parse(state.generated_at) : 0;
+                const beatAge = generatedAt > 0 ? Date.now() - generatedAt : null;
+                // /health/state is regenerated every 5s tick on the host; 30s
+                // window catches a ~6-tick gap before flagging degraded.
+                const heartbeatFresh = beatAge !== null && beatAge < 30000;
                 health.coordinator = {
-                    status: 'unknown',
-                    error: err && err.message,
+                    status: heartbeatFresh ? 'operational' : (beatAge !== null ? 'degraded' : 'unknown'),
+                    uptime: state.coordinator_uptime_s,
+                    generated_at: state.generated_at,
+                    heartbeatAgeSeconds: beatAge !== null ? Math.floor(beatAge / 1000) : null,
+                    livenessSignal: heartbeatFresh ? 'http_endpoint' : 'none',
+                    probeLatencyMs: Date.now() - probeStart,
+                };
+            } else {
+                health.coordinator = {
+                    status: 'degraded',
+                    upstream: `HTTP ${upstream.status}`,
                     livenessSignal: 'none',
                 };
             }
+        } catch (err) {
+            health.coordinator = {
+                status: 'unknown',
+                error: err && err.message,
+                livenessSignal: 'none',
+            };
+        }
 
-            // Projects list (transcript monitors): still sourced from the LSL
-            // registry but with an age filter so fossilized entries don't drag
-            // overall_status to `degraded`. Entries older than 5min are
-            // excluded — actively-monitoring projects beat at 10-30s.
-            const lslRegistryPath = join(__dirname, '../../../.global-lsl-registry.json');
-            if (existsSync(lslRegistryPath)) {
-                try {
-                    const registryData = JSON.parse(readFileSync(lslRegistryPath, 'utf8'));
-                    const PROJECT_FRESHNESS_MS = 5 * 60_000;
-                    health.projects = Object.entries(registryData.projects || {})
-                        .filter(([_, info]) => (info.exchanges || 0) > 0)
-                        .filter(([_, info]) => (Date.now() - (info.lastHealthCheck || 0)) < PROJECT_FRESHNESS_MS)
-                        .map(([name, info]) => {
-                            const timeSinceHealthCheck = Date.now() - (info.lastHealthCheck || 0);
-                            const isActive = info.status === 'active' && timeSinceHealthCheck < 60_000;
-                            const pidAlive = this.checkProcessAlive(info.monitorPid);
-                            const monitorAlive = pidAlive || isActive;
-                            return {
-                                name,
-                                status: isActive && monitorAlive ? 'active' : 'degraded',
-                                path: info.projectPath,
-                                monitorPid: info.monitorPid,
-                                monitorAlive,
-                                livenessSignal: pidAlive ? 'pid' : (isActive ? 'heartbeat' : 'none'),
-                                exchanges: info.exchanges || 0,
-                                lastHealthCheck: info.lastHealthCheck,
-                                timeSinceHealthCheck: Math.floor(timeSinceHealthCheck / 1000)
-                            };
-                        });
-                } catch (err) {
-                    logger.warn('LSL registry unreadable, projects list empty', { error: err.message });
-                }
+        // Projects list — derive from state.lsl_by_project (the per-project
+        // rollup) enriched with lastBeat freshness from state.lsl entries
+        // (Record<sid:project, entry>; one entry per active session).
+        //
+        // A project is `active` when its rollup says 'healthy' AND at least
+        // one session entry has beaten within the last 60s.
+        if (state && typeof state.lsl_by_project === 'object') {
+            const lslEntries = (state.lsl && typeof state.lsl === 'object') ? state.lsl : {};
+            // Group entries by trailing :<projectName> in their sid:project key.
+            const entriesByProject = new Map();
+            for (const [sidProject, entry] of Object.entries(lslEntries)) {
+                const projectName = entry && entry.projectName;
+                if (!projectName) continue;
+                if (!entriesByProject.has(projectName)) entriesByProject.set(projectName, []);
+                entriesByProject.get(projectName).push({ sidProject, ...entry });
             }
-
-            const hasUnhealthyCoordinator = health.coordinator.status !== 'operational';
-            const hasUnhealthyProjects = health.projects.some(p => p.status !== 'active');
-
-            if (hasUnhealthyCoordinator) {
-                health.overall_status = 'critical';
-            } else if (hasUnhealthyProjects) {
-                health.overall_status = 'degraded';
-            } else {
-                health.overall_status = 'healthy';
-            }
-
-            logger.debug('System health status calculated', {
-                overall: health.overall_status,
-                coordinatorStatus: health.coordinator.status,
-                coordinatorSignal: health.coordinator.livenessSignal,
-                projectCount: health.projects.length,
-                hasUnhealthyCoordinator,
-                hasUnhealthyProjects
+            health.projects = Object.entries(state.lsl_by_project).map(([name, rollup]) => {
+                const entries = entriesByProject.get(name) || [];
+                const freshestBeat = entries.reduce((max, e) => Math.max(max, e.lastBeat || 0), 0);
+                const beatAge = freshestBeat > 0 ? Date.now() - freshestBeat : null;
+                const heartbeatFresh = beatAge !== null && beatAge < 60_000;
+                const rollupHealthy = rollup === 'healthy';
+                return {
+                    name,
+                    status: rollupHealthy && heartbeatFresh ? 'active' : 'degraded',
+                    rollup,
+                    sessions: entries.length,
+                    freshestBeat: freshestBeat || null,
+                    beatAgeSeconds: beatAge !== null ? Math.floor(beatAge / 1000) : null,
+                    livenessSignal: heartbeatFresh ? 'heartbeat' : 'none',
+                };
             });
+        }
+
+        const hasUnhealthyCoordinator = health.coordinator.status !== 'operational';
+        const hasUnhealthyProjects = health.projects.some(p => p.status !== 'active');
+
+        if (hasUnhealthyCoordinator) {
+            health.overall_status = 'critical';
+        } else if (hasUnhealthyProjects) {
+            health.overall_status = 'degraded';
+        } else {
+            health.overall_status = 'healthy';
+        }
+
+        logger.debug('System health status calculated', {
+            overall: health.overall_status,
+            coordinatorStatus: health.coordinator.status,
+            coordinatorSignal: health.coordinator.livenessSignal,
+            projectCount: health.projects.length,
+            hasUnhealthyCoordinator,
+            hasUnhealthyProjects
+        });
+
+        try {
 
             const watchdogLogPath = join(__dirname, '../../../.logs/system-watchdog.log');
             if (existsSync(watchdogLogPath)) {
