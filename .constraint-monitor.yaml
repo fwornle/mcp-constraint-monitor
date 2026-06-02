@@ -33,10 +33,18 @@ constraints:
   - id: no-console-log
     group: code_quality
     pattern: console\.log
-    message: Use Logger.log() instead of console.log for better log management
+    message: |
+      Use the project Logger (lib/logging/Logger.js backend, utils/logging/Logger frontend). This rule enforces STRUCTURED LOGGING — the goal is filterable, levelled, categorised logs that can be queried.
+
+      DO NOT substitute process.stdout.write or process.stderr.write — those are themselves a violation of the rule's intent and constitute DODGING the constraint. Switching to a different raw-write API only makes the dodge invisible to grep; the behaviour the rule prevents (unstructured raw text writes) is unchanged. Pattern-matching a different function name is NOT a fix.
+
+      For one-off CLI scripts where Logger import is genuinely impractical (e.g., /tmp/scratch.js), include `OVERRIDE_CONSTRAINT: no-console-log` in the prompt with rationale. Silent swap to stdout/stderr writes is NOT acceptable.
     severity: warning
     enabled: true
-    suggestion: "Replace with: Logger.log('info', 'category', message)"
+    suggestion: |
+      Backend (Node.js): import { createLogger } from '../lib/logging/Logger.js'; const logger = createLogger('category'); logger.info(message);
+      Frontend (React): import { Logger } from '../utils/logging/Logger'; Logger.log('info', 'category', message);
+      One-off CLI: include `OVERRIDE_CONSTRAINT: no-console-log` in your prompt with rationale. NEVER dodge via stdout/stderr writes.
   - id: no-var-declarations
     group: code_quality
     pattern: \bvar\s+
@@ -44,6 +52,24 @@ constraints:
     severity: warning
     enabled: true
     suggestion: Use 'let' for mutable variables, 'const' for immutable
+  - id: prefer-gsd-browser
+    group: code_quality
+    pattern: chromium\.launch\s*\(
+    file_pattern: \.(m?js|ts)$
+    message: |
+      Hand-rolled Playwright scripts that call `chromium.launch()` directly are FORBIDDEN for visual UI verification — inline chromium import resolution breaks in /tmp/ scratch paths and the project's established tooling already handles this correctly.
+
+      Use the `gsd-browser` CLI for ad-hoc smoke tests (it wraps Playwright with the right chromium resolution), or place structured E2E tests under `tests/e2e/<area>/<spec>.spec.ts` and run via `npx playwright test`.
+
+      The `/playwright-cli` skill is allowed as an entry point, but writing `chromium.launch()` inside a /tmp/*.js script (even invoked via that skill) re-triggers this constraint — the dodge is the hand-rolled script itself, not which skill loaded.
+
+      For legitimate uses (e.g., a new test inside `tests/e2e/`), pass `OVERRIDE_CONSTRAINT: prefer-gsd-browser` in the prompt with rationale.
+    severity: warning
+    enabled: true
+    suggestion: |
+      Ad-hoc UI smoke: `gsd-browser navigate <url>` → `gsd-browser screenshot <path>` → `gsd-browser click <selector>` → `gsd-browser eval '<expr>'`
+      Structured E2E: place under `tests/e2e/<area>/<spec>.spec.ts`; run with `npx playwright test`.
+      Override: include `OVERRIDE_CONSTRAINT: prefer-gsd-browser` in the prompt with rationale.
   - id: proper-error-handling
     group: code_quality
     pattern: catch\s*\([^)]*\)\s*\{\s*\}
