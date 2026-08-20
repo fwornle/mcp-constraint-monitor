@@ -102,8 +102,20 @@ class RealTimeConstraintEnforcer {
               }
             }
 
-            // Check file_pattern - if specified, only apply to matching files
-            if (constraintConfig.file_pattern && context.filePath) {
+            // Check file_pattern - if specified, only apply to matching files.
+            //
+            // A constraint that declares a file_pattern is file-scoped BY DEFINITION, so it
+            // must not be evaluated against content that has no file at all -- a Bash command,
+            // for instance. Previously the check was skipped whenever context.filePath was
+            // absent, which inverted the intent: the most narrowly scoped rules were the ones
+            // applied most broadly. That is how `plantuml-standard-styling` came to block
+            // shell commands that merely MENTIONED a PlantUML directive, including greps and
+            // the edit to the rule itself.
+            if (constraintConfig.file_pattern) {
+              if (!context.filePath) {
+                logger.debug(`✅ Skipping ${violation.constraint_id} - file-scoped rule, no file in context`);
+                return false; // Filter out this violation
+              }
               try {
                 const fileRegex = new RegExp(constraintConfig.file_pattern);
                 if (!fileRegex.test(context.filePath)) {

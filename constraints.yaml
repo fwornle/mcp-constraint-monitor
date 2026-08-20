@@ -134,6 +134,7 @@ constraints:
     message: PlantUML files must include the standard styling file
     severity: error
     enabled: true
+    file_pattern: \.(puml|plantuml)$
     suggestion: Add '!include _standard-style.puml' after @startuml and before content
   - id: plantuml-file-location
     group: plantuml
@@ -146,12 +147,12 @@ constraints:
   - id: plantuml-diagram-workflow
     group: plantuml
     pattern: (?i)(architecture|diagram|flow|sequence).*(?:diagram|chart)
-    message: "Diagrams should follow PlantUML workflow: .puml files in docs/puml/, PNG files in docs/images/"
+    message: "Diagrams should follow PlantUML workflow: .puml files in docs/puml/, PNG files in docs-content/images/"
     severity: info
     enabled: true
     file_pattern: \.(md|markdown|rst|txt)$
     suggestion: 1. Create .puml file in docs/puml/ with !include _standard-style.puml 2. Generate PNG with plantuml -tpng 3.
-      Store PNG in docs/images/ 4. Reference PNG in markdown
+      Store PNG in docs-content/images/ 4. Reference PNG in markdown
   - id: plantuml-readability-guidelines
     group: plantuml
     pattern: (?i)(too wide|barely readable|restructure.*readability)
@@ -176,11 +177,11 @@ constraints:
     suggestion: Instead of creating diagram-name-2.puml, edit diagram-name.puml directly
   - id: image-reference-pattern
     group: documentation
-    pattern: "!\\[.*\\]\\((?!docs/images/).*\\.(png|jpg|jpeg|svg)\\)"
-    message: Diagram images should be stored in docs/images/ and referenced with relative paths
+    pattern: "!\\[.*\\]\\((?!(?:\\.\\./)*images/|docs-content/images/|https?://)[^)]*\\.(png|jpg|jpeg|svg)\\)"
+    message: Diagram images must live in docs-content/images/ and be referenced relatively
     severity: warning
     enabled: true
-    suggestion: "Move images to docs/images/ and update markdown references: ![Description](docs/images/filename.png)"
+    suggestion: "Move the image to docs-content/images/ and reference it relatively"
   - id: documentation-filename-format
     group: documentation
     applies_to: file_path
