@@ -7,7 +7,8 @@
   "bin": {
     "mcp-constraint-monitor": "src/server.js",
     "mcp-constraint-monitor-sse": "src/sse-server.js",
-    "mcp-constraint-monitor-proxy": "src/stdio-proxy.js"
+    "mcp-constraint-monitor-proxy": "src/stdio-proxy.js",
+    "constraints": "src/cli.js"
   },
   "scripts": {
     "start": "node src/server.js",
