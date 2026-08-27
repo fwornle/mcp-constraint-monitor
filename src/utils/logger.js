@@ -48,7 +48,10 @@ const performanceFormat = winston.format.combine(
 const isRunningAsMcpServer = !process.stdin.isTTY;
 const isRunningAsHook = process.env.CLAUDE_CODE_HOOK === 'true' ||
                         process.argv[1]?.includes('hook-wrapper');
-const shouldSuppressConsole = isRunningAsMcpServer || isRunningAsHook;
+// src/cli.js sets this before it imports anything: a CLI must not narrate over
+// its own output. `constraints --verbose` leaves it unset to get the logs back.
+const isRunningAsCli = process.env.CONSTRAINT_MONITOR_CLI === '1';
+const shouldSuppressConsole = isRunningAsMcpServer || isRunningAsHook || isRunningAsCli;
 
 const transports = [
   // General log file
