@@ -4,7 +4,14 @@ Real-time constraint enforcement system for Claude Code that prevents policy vio
 
 ## Overview
 
-The MCP Constraint Monitor provides:
+> **The four MCP tools are retired.** Their schemas cost ~1.5 KB in every context window for
+> actions only ever taken deliberately. The agent-facing entry point is the `constraints` CLI
+> (`bin/constraints` + the `/constraints` skill), which runs in-process against the same
+> `ConstraintEngine` — so it keeps working when the container is down. Enforcement was never MCP
+> anyway: it is the `PreToolUse` / `UserPromptSubmit` hooks, which are unchanged. `src/server.js`
+> and `src/sse-server.js` still work for any external MCP client.
+
+The Constraint Monitor provides:
 
 - **Real-time validation**: Checks constraints before tool execution
 - **Flexible rules**: Regex patterns with optional semantic validation
