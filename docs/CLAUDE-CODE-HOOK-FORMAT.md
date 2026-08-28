@@ -301,7 +301,7 @@ This format is accurate as of:
 
 - Claude Code Documentation: https://docs.claude.com/claude-code
 - Hook Configuration: `~/.claude/settings.json`
-- Example Implementation: `/integrations/mcp-constraint-monitor/src/hooks/pre-tool-hook-wrapper.js`
+- Example Implementation: `/integrations/constraint-monitor/src/hooks/pre-tool-hook-wrapper.js`
 
 ---
 

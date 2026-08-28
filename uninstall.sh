@@ -9,7 +9,7 @@ echo "🗑️  Uninstalling MCP Constraint Monitor..."
 
 # Check if we're in the right directory
 if [[ ! -f "package.json" ]]; then
-    echo "❌ Error: package.json not found. Please run this script from the mcp-constraint-monitor directory."
+    echo "❌ Error: package.json not found. Please run this script from the constraint-monitor directory."
     exit 1
 fi
 

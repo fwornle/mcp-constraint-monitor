@@ -42,7 +42,6 @@ export class ConfigManager {
 
     // Try to load project-specific config
     const configPaths = [
-      './mcp-constraint-monitor.json',
       './constraint-monitor.json',
       './.constraint-monitor.json'
     ];

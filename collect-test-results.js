@@ -15,7 +15,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // FIXED: Correctly resolve coding repo path
-// This script is in integrations/mcp-constraint-monitor/, so coding repo is ../.. from here
+// This script is in integrations/constraint-monitor/, so coding repo is ../.. from here
 // But path.resolve with relative paths from __dirname doesn't work correctly
 // Instead, navigate up from the known location
 const CODING_REPO = path.resolve(__dirname, '../../');
