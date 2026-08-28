@@ -166,13 +166,13 @@ The main status line calls the constraint monitor API:
     "UserPromptSubmit": [{
       "hooks": [{
         "type": "command",
-        "command": "node /path/to/mcp-constraint-monitor/src/hooks/pre-prompt-hook-wrapper.js"
+        "command": "node /path/to/constraint-monitor/src/hooks/pre-prompt-hook-wrapper.js"
       }]
     }],
     "PreToolUse": [{
       "hooks": [{
         "type": "command",
-        "command": "node /path/to/mcp-constraint-monitor/src/hooks/pre-tool-hook-wrapper.js"
+        "command": "node /path/to/constraint-monitor/src/hooks/pre-tool-hook-wrapper.js"
       }]
     }]
   }
@@ -191,9 +191,9 @@ The main status line calls the constraint monitor API:
 
 **Constraint Component Shows [🛡️ ❌]:**
 1. Check constraint monitor API: `curl http://localhost:3031/api/health`
-2. Start constraint monitor service: `cd integrations/mcp-constraint-monitor && npm run api`
+2. Start constraint monitor service: `cd integrations/constraint-monitor && npm run api`
 3. Verify port availability: `lsof -i :3031`
-4. Check service logs: `cd integrations/mcp-constraint-monitor && npm run logs`
+4. Check service logs: `cd integrations/constraint-monitor && npm run logs`
 
 **Inaccurate Compliance Percentages:**
 1. Review recent violations: `curl http://localhost:3031/api/violations?project=coding`

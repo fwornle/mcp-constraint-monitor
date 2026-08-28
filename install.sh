@@ -19,7 +19,7 @@ echo "🔧 Installing MCP Constraint Monitor..."
 
 # Check if we're in the right directory
 if [[ ! -f "package.json" ]]; then
-    echo "❌ Error: package.json not found. Please run this script from the mcp-constraint-monitor directory."
+    echo "❌ Error: package.json not found. Please run this script from the constraint-monitor directory."
     exit 1
 fi
 
@@ -61,7 +61,7 @@ fi
 
 echo "🪝 Installing Claude Code hooks..."
 
-# Detect coding repo root (go up two levels from integrations/mcp-constraint-monitor)
+# Detect coding repo root (go up two levels from integrations/constraint-monitor)
 CODING_REPO="$(cd ../.. && pwd)"
 CLAUDE_SETTINGS="$CODING_REPO/.claude/settings.local.json"
 
@@ -84,7 +84,7 @@ if [[ ! -f "$CLAUDE_SETTINGS" ]]; then
         "hooks": [
           {
             "type": "command",
-            "command": "node CODING_REPO/integrations/mcp-constraint-monitor/src/hooks/pre-prompt-hook-wrapper.js"
+            "command": "node CODING_REPO/integrations/constraint-monitor/src/hooks/pre-prompt-hook-wrapper.js"
           }
         ]
       }
@@ -94,7 +94,7 @@ if [[ ! -f "$CLAUDE_SETTINGS" ]]; then
         "hooks": [
           {
             "type": "command",
-            "command": "node CODING_REPO/integrations/mcp-constraint-monitor/src/hooks/pre-tool-hook-wrapper.js"
+            "command": "node CODING_REPO/integrations/constraint-monitor/src/hooks/pre-tool-hook-wrapper.js"
           }
         ]
       }
@@ -120,7 +120,7 @@ else
         echo '       "hooks": ['
         echo '         {'
         echo '           "type": "command",'
-        echo "           \"command\": \"node $CODING_REPO/integrations/mcp-constraint-monitor/src/hooks/pre-prompt-hook-wrapper.js\""
+        echo "           \"command\": \"node $CODING_REPO/integrations/constraint-monitor/src/hooks/pre-prompt-hook-wrapper.js\""
         echo '         }'
         echo '       ]'
         echo '     }'
@@ -130,7 +130,7 @@ else
         echo '       "hooks": ['
         echo '         {'
         echo '           "type": "command",'
-        echo "           \"command\": \"node $CODING_REPO/integrations/mcp-constraint-monitor/src/hooks/pre-tool-hook-wrapper.js\""
+        echo "           \"command\": \"node $CODING_REPO/integrations/constraint-monitor/src/hooks/pre-tool-hook-wrapper.js\""
         echo '         }'
         echo '       ]'
         echo '     }'

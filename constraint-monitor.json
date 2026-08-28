@@ -6,7 +6,7 @@
   },
   "databases": {
     "analytics": {
-      "path": "/Users/q284340/Agentic/coding/integrations/mcp-constraint-monitor/constraint-analytics.db"
+      "path": "./constraint-analytics.db"
     }
   }
 }

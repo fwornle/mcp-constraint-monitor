@@ -1,4 +1,4 @@
-# MCP Constraint Monitor
+# Constraint Monitor
 
 Real-time constraint enforcement system for Claude Code that prevents policy violations before they happen.
 
@@ -24,7 +24,7 @@ The Constraint Monitor provides:
 ### Installation
 
 ```bash
-cd integrations/mcp-constraint-monitor
+cd integrations/constraint-monitor
 npm install
 ./install.sh
 ```

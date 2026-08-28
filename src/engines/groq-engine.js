@@ -67,7 +67,7 @@ export class GrokSemanticEngine {
           model: this.config.model,
           inputTokens: completion.usage.prompt_tokens || 0,
           outputTokens: completion.usage.completion_tokens || 0,
-          source: 'mcp-constraint-monitor:analyzeInteraction',
+          source: 'constraint-monitor:analyzeInteraction',
         }).catch(err => logger.warn('Failed to report usage cost:', err.message));
       }
 
@@ -270,7 +270,7 @@ Respond with JSON array of violations (empty if none):
           model: this.config.model,
           inputTokens: completion.usage.prompt_tokens || 0,
           outputTokens: completion.usage.completion_tokens || 0,
-          source: 'mcp-constraint-monitor:analyzeSemanticConstraints',
+          source: 'constraint-monitor:analyzeSemanticConstraints',
         }).catch(err => logger.warn('Failed to report usage cost:', err.message));
       }
 
@@ -343,7 +343,7 @@ Respond with JSON array of violations (empty if none):
           model: this.config.model,
           inputTokens: completion.usage.prompt_tokens || 0,
           outputTokens: completion.usage.completion_tokens || 0,
-          source: 'mcp-constraint-monitor:healthCheck',
+          source: 'constraint-monitor:healthCheck',
         }).catch(err => logger.warn('Failed to report usage cost:', err.message));
       }
 

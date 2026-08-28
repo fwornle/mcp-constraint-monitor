@@ -1,13 +1,13 @@
 {
-  "name": "mcp-constraint-monitor",
+  "name": "constraint-monitor",
   "version": "1.0.0",
-  "description": "Universal MCP server for real-time coding constraint monitoring and live guardrails",
+  "description": "Real-time coding constraint enforcement and live guardrails (constraints CLI + PreToolUse hooks; MCP transports for external clients)",
   "type": "module",
   "main": "src/server.js",
   "bin": {
-    "mcp-constraint-monitor": "src/server.js",
-    "mcp-constraint-monitor-sse": "src/sse-server.js",
-    "mcp-constraint-monitor-proxy": "src/stdio-proxy.js",
+    "constraint-monitor": "src/server.js",
+    "constraint-monitor-sse": "src/sse-server.js",
+    "constraint-monitor-proxy": "src/stdio-proxy.js",
     "constraints": "src/cli.js"
   },
   "scripts": {
@@ -58,9 +58,9 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/anthropics/mcp-constraint-monitor.git"
+    "url": "git+https://github.com/fwornle/constraint-monitor.git"
   },
-  "homepage": "https://github.com/anthropics/mcp-constraint-monitor#readme",
+  "homepage": "https://github.com/fwornle/constraint-monitor#readme",
   "files": [
     "src/",
     "bin/",

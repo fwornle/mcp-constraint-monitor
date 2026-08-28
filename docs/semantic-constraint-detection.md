@@ -534,4 +534,4 @@ if (estimatedCost > 1.0) {
 For issues or questions:
 - Check logs: `logs/constraint-monitor.log`
 - Review stats: Call `validator.getStats()`
-- GitHub Issues: [Report a problem](https://github.com/your-org/mcp-constraint-monitor/issues)
+- GitHub Issues: [Report a problem](https://github.com/fwornle/constraint-monitor/issues)

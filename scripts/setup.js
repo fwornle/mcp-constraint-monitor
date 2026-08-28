@@ -59,10 +59,10 @@ async function setupConfiguration() {
     }
   };
   
-  const configPath = join(process.cwd(), 'mcp-constraint-monitor.json');
+  const configPath = join(process.cwd(), 'constraint-monitor.json');
   if (!existsSync(configPath)) {
     writeFileSync(configPath, JSON.stringify(projectConfig, null, 2));
-    console.log('  ✅ Created mcp-constraint-monitor.json');
+    console.log('  ✅ Created constraint-monitor.json');
   }
 }
 
@@ -130,7 +130,7 @@ async function main() {
     console.log('   1. Add to your Claude MCP config:');
     console.log('      "constraint-monitor": {');
     console.log('        "command": "npx",');
-    console.log('        "args": ["mcp-constraint-monitor"]');
+    console.log('        "args": ["constraint-monitor"]');
     console.log('      }');
     console.log('   2. Customize constraints in constraints.yaml');
     console.log('   3. Start Claude Code with MCP integration');
